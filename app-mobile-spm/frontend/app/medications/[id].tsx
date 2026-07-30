@@ -8,6 +8,7 @@ import AccessiblePressable from '@/src/components/AccessiblePressable';
 import { colors, spacing, radius, font } from '@/src/theme';
 import { api } from '@/src/api';
 import { useAuth } from '@/src/auth';
+import * as Speech from 'expo-speech';
 
 export default function MedicationDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -76,6 +77,35 @@ export default function MedicationDetail() {
     }
   };
 
+  function buildMedLabel(med: any) {
+    if (!med) return 'Dados do remédio';
+    const parts = [med.name || 'Remédio'];
+    if (med.dosage) parts.push(`Dosagem ${med.dosage}`);
+    if (med.frequency) parts.push(`Frequência ${med.frequency}`);
+    if (med.stock !== undefined) parts.push(`Estoque ${med.stock}`);
+    if (med.reminder_time) parts.push(`Horários ${Array.isArray(med.reminder_time) ? med.reminder_time.join(', ') : med.reminder_time}`);
+    return parts.join('. ');
+  }
+
+  function formatReminder(raw: any) {
+    if (!raw) return '';
+    try {
+      let arr = raw;
+      if (typeof raw === 'string') {
+        if (raw.trim().startsWith('[')) arr = JSON.parse(raw);
+        else if (raw.includes(',')) arr = raw.split(',').map((s: string) => s.trim());
+        else arr = [raw];
+      }
+      if (Array.isArray(arr)) {
+        const times = arr.map((t: string) => `às ${t}`);
+        if (times.length === 1) return times[0];
+        if (times.length === 2) return times.join(' e ');
+        return times.slice(0, -1).join(', ') + ' e ' + times.slice(-1);
+      }
+      return String(raw);
+    } catch (e) { return String(raw); }
+  }
+
   if (loading) return <ActivityIndicator style={{ flex: 1 }} color={colors.brandPrimary} />;
   if (!med) return <Text style={{ padding: 24 }}>Medicamento não encontrado</Text>;
 
@@ -89,7 +119,7 @@ export default function MedicationDetail() {
         <View style={{ width: 44 }} />
       </View>
       <ScrollView contentContainerStyle={styles.body}>
-        <View style={styles.card}>
+        <AccessiblePressable style={styles.card} label={buildMedLabel(med)} onPress={() => {}}>
           <View style={styles.rowHeader}>
             <Text style={styles.titleLabel}>Dados do remédio</Text>
             <AccessiblePressable style={styles.editBtn} onPress={() => router.push(`/medications/edit/${id}`)} testID="med-edit-btn">
@@ -103,6 +133,12 @@ export default function MedicationDetail() {
           <Text style={styles.value}>{med.frequency || '—'}</Text>
           <Text style={styles.label}>Estoque</Text>
           <Text style={styles.value}>{med.stock}</Text>
+          {med.reminder_time ? (
+            <>
+              <Text style={styles.label}>Horários</Text>
+              <Text style={styles.value}>{formatReminder(med.reminder_time)}</Text>
+            </>
+          ) : null}
           {med.notes ? (
             <>
               <Text style={styles.label}>Observações</Text>
@@ -123,7 +159,7 @@ export default function MedicationDetail() {
               <Text style={styles.photoHint}>Foto pronta para verificação</Text>
             </>
           ) : null}
-        </View>
+        </AccessiblePressable>
         <AccessiblePressable style={[styles.cta, photoRequired && !photo ? styles.ctaDisabled : null]} onPress={takeDose} label="Registrar dose" testID="med-register-dose" disabled={(photoRequired && !photo) || verifying}>
           <Text style={styles.ctaTxt}>{verifying ? 'Verificando...' : 'Registrar dose'}</Text>
         </AccessiblePressable>

@@ -31,9 +31,12 @@ export default function Appointments() {
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const now = dayjs();
+  const CANCELLED_STATUSES = new Set(['cancelled', 'cancelado']);
+  const COMPLETED_STATUSES = new Set(['completed', 'compareceu', 'realizada']);
   const filtered = items.filter(a => {
-    if (tab === 'upcoming') return dayjs(a.scheduled_at).isAfter(now) && a.status !== 'cancelled' && a.status !== 'completed';
-    return dayjs(a.scheduled_at).isBefore(now) || a.status === 'cancelled' || a.status === 'completed';
+    const status = String(a.status || '').toLowerCase();
+    if (tab === 'upcoming') return dayjs(a.scheduled_at).isAfter(now) && !CANCELLED_STATUSES.has(status) && !COMPLETED_STATUSES.has(status);
+    return dayjs(a.scheduled_at).isBefore(now) || CANCELLED_STATUSES.has(status) || COMPLETED_STATUSES.has(status);
   });
 
   return (

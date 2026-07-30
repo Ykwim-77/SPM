@@ -7,6 +7,24 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, radius, font } from '@/src/theme';
 import { useAuth } from '@/src/auth';
+import * as Speech from 'expo-speech';
+
+function buildEmergencyLabel(user: any) {
+  if (!user) return 'Cartão de emergência';
+  const parts = [user.name || 'Paciente'];
+  if (user.blood_type) parts.push(`Tipo sanguíneo ${user.blood_type}`);
+  if (user.emergency_contact) parts.push(`Contato de emergência ${user.emergency_contact}`);
+  if (user.emergency_phone) parts.push(`Telefone ${user.emergency_phone}`);
+  return parts.join('. ');
+}
+
+function speakEmergency(user: any) {
+  try {
+    const text = buildEmergencyLabel(user) + '.';
+    Speech.stop();
+    Speech.speak(text, { rate: 0.95 });
+  } catch (e) {}
+}
 
 export default function Emergency() {
   const router = useRouter();
@@ -22,7 +40,11 @@ export default function Emergency() {
         <View style={{ width: 44 }} />
       </View>
       <ScrollView contentContainerStyle={styles.body}>
-        <LinearGradient colors={[colors.brandSecondary, '#009449']} style={styles.card}>
+        <AccessiblePressable
+          label={buildEmergencyLabel(user)}
+          onPress={() => speakEmergency(user)}
+>
+          <LinearGradient colors={[colors.brandSecondary, '#009449']} style={styles.card}>
           <View style={styles.cardHead}>
             <Ionicons name="medical" size={32} color="#fff" />
             <View style={{ flex: 1 }}>
@@ -50,7 +72,8 @@ export default function Emergency() {
               </View>
             ))}
           </View>
-        </LinearGradient>
+          </LinearGradient>
+        </AccessiblePressable>
 
         <Section title="Filiação">
           <InfoLine label="Mãe" value={user?.mother_name || '—'} />

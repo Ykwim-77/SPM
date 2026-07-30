@@ -65,6 +65,9 @@ model Patient {
   substanceUse           String?
   allergies              String?
   chronicConditions      String?
+  bloodType              String?
+  medicationPhotoRequired Boolean              @default(true)
+  accessibilityEnabled   Boolean               @default(false)
   lgpdAccepted           Boolean               @default(false)
   missedCount            Int                   @default(0)
   blockedOnline          Boolean               @default(false)

@@ -22,6 +22,15 @@ function toLocalDateKey(d) {
   return `${y}-${m}-${day}`;
 }
 
+function generateTemporaryPassword(length = 12) {
+  const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+-=[]{}|;:,.<>?";
+  let result = "";
+  for (let i = 0; i < length; i += 1) {
+    result += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return result;
+}
+
 export default function AtendenteDashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -48,6 +57,8 @@ export default function AtendenteDashboard() {
   const [np, setNp] = useState({
     name: "",
     cpf: "",
+    email: "",
+    temporary_password: "",
     birth_date: "2000-01-01",
     phone: "",
     address: "",
@@ -155,13 +166,18 @@ export default function AtendenteDashboard() {
   };
   const createPatient = async () => {
     try {
-      await api.post("/patients", np);
+      await api.post("/patients", {
+        ...np,
+        temporary_password: np.temporary_password.trim(),
+      });
       toast.success("Paciente cadastrado");
       setShowPatientForm(false);
       load();
       setNp({
         name: "",
         cpf: "",
+        email: "",
+        temporary_password: "",
         birth_date: "2000-01-01",
         phone: "",
         address: "",
@@ -180,7 +196,8 @@ export default function AtendenteDashboard() {
         lgpd_accepted: true,
       });
     } catch (e) {
-      toast.error("Erro ao cadastrar");
+      const detail = e?.response?.data?.error?.message || e?.response?.data?.detail || "Erro ao cadastrar";
+      toast.error(detail);
     }
   };
 
@@ -720,6 +737,36 @@ export default function AtendenteDashboard() {
                 placeholder="Somente números (ex. 12345678910)"
               />
             </Field>
+            <Field label="E-mail para login no app mobile">
+              <input
+                type="email"
+                value={np.email}
+                onChange={(e) => updateNp("email", e.target.value)}
+                className="inp"
+                placeholder="paciente@exemplo.com"
+              />
+            </Field>
+            <Field label="Senha temporária">
+              <input
+                type="password"
+                value={np.temporary_password}
+                onChange={(e) => updateNp("temporary_password", e.target.value)}
+                className="inp"
+                placeholder="Mínimo 8 caracteres"
+              />
+            </Field>
+            <div className="col-span-2 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => updateNp("temporary_password", generateTemporaryPassword(12))}
+                className="px-4 py-2 border border-slate-200 rounded-md text-sm"
+              >
+                Gerar senha temporária
+              </button>
+              <div className="text-[11px] text-slate-500 self-center">
+                Essa senha será usada para o login do app mobile.
+              </div>
+            </div>
             <Field label="Cartão Nacional de Saúde (SUS)">
               <input
                 value={np.sus_card}
@@ -861,7 +908,7 @@ export default function AtendenteDashboard() {
             <button
               data-testid="np-submit"
               onClick={createPatient}
-              disabled={!np.name || !np.cpf}
+              disabled={!np.name || !np.cpf || !np.email || !np.temporary_password || np.temporary_password.length < 8}
               className="btn-primary disabled:opacity-50"
             >
               Cadastrar

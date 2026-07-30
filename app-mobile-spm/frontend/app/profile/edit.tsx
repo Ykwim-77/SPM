@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform, Alert, Image } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform, Alert, Image } from 'react-native';
+import AccessibleTextInput from '@/src/components/AccessibleTextInput';
 import * as ImagePicker from 'expo-image-picker';
 import AccessiblePressable from '@/src/components/AccessiblePressable';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,6 +23,7 @@ export default function EditProfile() {
   const [address, setAddress] = useState(user?.address || '');
   const [birthdate, setBirthdate] = useState(formatBirthdate(user?.birthdate || ''));
   const [gender, setGender] = useState(user?.gender || '');
+  const [bloodType, setBloodType] = useState(user?.blood_type || '');
   const [photoBase64, setPhotoBase64] = useState(user?.photo_base64 || '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +60,7 @@ export default function EditProfile() {
         address: address || undefined,
         birthdate: toISODate(birthdate) || undefined,
         gender: gender || undefined,
+        blood_type: bloodType || undefined,
         photo_base64: photoBase64 || undefined,
       });
       await refresh();
@@ -110,6 +113,17 @@ export default function EditProfile() {
             ))}
           </View>
 
+          <SectionTitle title="Dados médicos" />
+          <Text style={styles.label}>Tipo sanguíneo</Text>
+          <View style={styles.chipsRow}>
+            {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map((bt) => (
+              <AccessiblePressable key={bt} onPress={() => setBloodType(bt)}
+                style={[styles.chip, bloodType === bt && styles.chipOn]} testID={`blood-${bt}`}>
+                <Text style={[styles.chipTxt, bloodType === bt && { color: '#fff' }]}>{bt}</Text>
+              </AccessiblePressable>
+            ))}
+          </View>
+
           <SectionTitle title="Contato" />
           <Field label="Telefone" value={phone} onChangeText={(value) => setPhone(formatPhone(value))} keyboardType="phone-pad" testID="edit-phone" />
           <Field label="Endereço" value={address} onChangeText={setAddress} multiline testID="edit-address" />
@@ -129,9 +143,10 @@ function Field({ label, ...rest }: any) {
   return (
     <View>
       <Text style={styles.label}>{label}</Text>
-      <TextInput
+      <AccessibleTextInput
         style={[styles.input, rest.multiline && { minHeight: 72, textAlignVertical: 'top' }]}
         placeholderTextColor={colors.muted}
+        label={label}
         {...rest}
       />
     </View>

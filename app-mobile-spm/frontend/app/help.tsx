@@ -43,7 +43,7 @@ export default function Help() {
           <ActivityIndicator color={colors.brandPrimary} style={{ marginTop: 32 }} />
         ) : (
           items.map((f, idx) => (
-            <AccessiblePressable key={idx} style={styles.faq} onPress={() => setOpenIdx(openIdx === idx ? null : idx)} testID={`faq-${idx}`}>
+            <AccessiblePressable key={idx} style={styles.faq} onPress={() => setOpenIdx(openIdx === idx ? null : idx)} testID={`faq-${idx}`} label={`Pergunta: ${f.q}`}>
               <View style={styles.faqHead}>
                 <Text style={styles.faqQ}>{f.q}</Text>
                 <Ionicons name={openIdx === idx ? 'chevron-up' : 'chevron-down'} size={20} color={colors.brandPrimary} />
@@ -55,7 +55,7 @@ export default function Help() {
 
         <View style={styles.contact}>
           <Text style={styles.contactTitle}>Ainda precisa de ajuda?</Text>
-          <AccessiblePressable style={styles.contactBtn} onPress={() => Linking.openURL('tel:136')} testID="call-sus">
+          <AccessiblePressable style={styles.contactBtn} onPress={() => Linking.openURL('tel:136')} testID="call-sus" label="Ligar para Disque Saúde 136">
             <Ionicons name="call" size={20} color="#fff" />
             <Text style={styles.contactBtnTxt}>Ligar para Disque Saúde 136</Text>
           </AccessiblePressable>

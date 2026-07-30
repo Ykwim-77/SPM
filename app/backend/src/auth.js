@@ -7,10 +7,11 @@ dotenv.config();
 export const prisma = new PrismaClient();
 
 const STAFF_SECRET = process.env.JWT_SECRET_STAFF || process.env.JWT_SECRET || "dev-staff-secret";
+const PATIENT_SECRET = process.env.JWT_SECRET_PATIENT || process.env.JWT_SECRET || "dev-patient-secret";
 const STAFF_TTL = process.env.JWT_EXPIRES_IN_STAFF || "8h";
 
 export const signToken = (u, kind = "staff") => {
-  const secret = kind === "patient" ? process.env.JWT_SECRET_PATIENT || process.env.JWT_SECRET || "dev-patient-secret" : STAFF_SECRET;
+  const secret = kind === "patient" ? PATIENT_SECRET : STAFF_SECRET;
   const ttl = kind === "patient" ? process.env.JWT_EXPIRES_IN_PATIENT || "30d" : STAFF_TTL;
   return jwt.sign({ sub: u.id, email: u.email, role: u.role }, secret, { expiresIn: ttl });
 };
@@ -27,7 +28,15 @@ export async function requireAuth(req, res, next) {
     req.user = user;
     next();
   } catch {
-    res.status(401).json({ detail: "Token inválido" });
+    try {
+      const p = jwt.verify(token, PATIENT_SECRET);
+      const user = await prisma.user.findUnique({ where: { id: p.sub } });
+      if (!user) return res.status(401).json({ detail: "Usuário não encontrado" });
+      req.user = user;
+      next();
+    } catch {
+      res.status(401).json({ detail: "Token inválido" });
+    }
   }
 }
 

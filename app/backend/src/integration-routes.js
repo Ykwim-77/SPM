@@ -57,11 +57,14 @@ async function selectDoctor(tx, { doctorId, specialty, unit, scheduledAt }) {
     if (doctor) return doctor;
   }
 
+  const requestedSpecialty = specialty?.trim();
   const doctors = await tx.user.findMany({
     where: {
       role: "medico",
       active: true,
-      specialty,
+      ...(requestedSpecialty && requestedSpecialty !== "UPA" && requestedSpecialty !== "Clínica Geral"
+        ? { specialty: requestedSpecialty }
+        : {}),
       ...(unit ? { unit } : {}),
     },
     orderBy: { createdAt: "asc" },
@@ -77,6 +80,27 @@ async function selectDoctor(tx, { doctorId, specialty, unit, scheduledAt }) {
     });
     if (!locked) return doctor;
   }
+
+  if (requestedSpecialty === "UPA" || requestedSpecialty === "Clínica Geral") {
+    const fallback = await tx.user.findFirst({
+      where: {
+        role: "medico",
+        active: true,
+      },
+      orderBy: { createdAt: "asc" },
+    });
+    if (fallback) {
+      const locked = await tx.doctorScheduleLock.findFirst({
+        where: {
+          doctorId: fallback.id,
+          active: true,
+          date: { gte: localDayRange(scheduledAt).start, lt: localDayRange(scheduledAt).end },
+        },
+      });
+      if (!locked) return fallback;
+    }
+  }
+
   return null;
 }
 
@@ -112,6 +136,7 @@ async function createOrRescheduleAppointment(payload) {
 
   return prisma.$transaction(
     async (tx) => {
+      console.log("[integration] booking request", { patientId: payload.patientId, specialty: payload.specialty, unit: payload.unit, scheduledAt: payload.scheduledAt, doctorId: payload.doctorId });
       const patient = await tx.patient.findUnique({ where: { id: payload.patientId } });
       if (!patient) {
         const error = new Error("NOT_FOUND");
@@ -127,14 +152,9 @@ async function createOrRescheduleAppointment(payload) {
       }
 
       const unit = payload.unit || "UBS Central";
-      const specialty = payload.specialty;
-      if (!specialty) {
-        const error = new Error("VALIDATION_ERROR");
-        error.code = "VALIDATION_ERROR";
-        error.message = "Especialidade é obrigatória.";
-        throw error;
-      }
+      const specialty = payload.specialty || "Clínica Geral";
       const doctor = await selectDoctor(tx, { ...payload, specialty, unit, scheduledAt });
+      console.log("[integration] selected doctor", doctor?.id, doctor?.name, doctor?.specialty);
       if (!doctor) {
         const error = new Error("NOT_FOUND");
         error.code = "NOT_FOUND";

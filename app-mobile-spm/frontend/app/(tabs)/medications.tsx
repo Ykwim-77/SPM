@@ -79,6 +79,7 @@ export default function Medications() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.cardTitle}>{item.name}</Text>
                 <Text style={styles.cardMeta}>{item.dosage || 'Dose não informada'} • {item.frequency || 'freq. não informada'}</Text>
+                {item.reminder_time ? <Text style={styles.cardReminder}>Horário: {formatReminder(item.reminder_time)}</Text> : null}
                 <Text style={styles.cardStock}>Estoque: {item.stock}</Text>
               </View>
               {item.stock <= 5 && <View style={styles.lowChip}><Text style={styles.lowChipTxt}>Baixo</Text></View>}
@@ -88,6 +89,28 @@ export default function Medications() {
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+function formatReminder(raw: any) {
+  if (!raw) return '';
+  try {
+    let arr = raw;
+    if (typeof raw === 'string') {
+      // try JSON
+      if (raw.trim().startsWith('[')) arr = JSON.parse(raw);
+      else if (raw.includes(',')) arr = raw.split(',').map((s: string) => s.trim());
+      else arr = [raw];
+    }
+    if (Array.isArray(arr)) {
+      const times = arr.map((t: string) => `às ${t}`);
+      if (times.length === 1) return times[0];
+      if (times.length === 2) return times.join(' e ');
+      return times.slice(0, -1).join(', ') + ' e ' + times.slice(-1);
+    }
+    return String(raw);
+  } catch (e) {
+    return String(raw);
+  }
 }
 
 const styles = StyleSheet.create({
@@ -104,6 +127,7 @@ const styles = StyleSheet.create({
   icon: { width: 44, height: 44, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
   cardTitle: { fontSize: font.base, fontWeight: '700', color: colors.onSurface },
   cardMeta: { fontSize: font.sm, color: colors.muted, marginTop: 2 },
+  cardReminder: { fontSize: font.sm, color: colors.brandSecondary, marginTop: 4, fontWeight: '600' },
   cardStock: { fontSize: font.sm, color: colors.brandPrimary, marginTop: 4, fontWeight: '600' },
   lowChip: { backgroundColor: colors.warningSoft, paddingHorizontal: 8, paddingVertical: 4, borderRadius: radius.pill },
   lowChipTxt: { color: colors.warning, fontSize: 11, fontWeight: '700' },

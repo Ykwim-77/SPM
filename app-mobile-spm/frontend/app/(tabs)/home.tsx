@@ -52,7 +52,7 @@ export default function Home() {
             <Ionicons name="notifications" size={22} color={colors.brandPrimary} />
             {notifCount > 0 && <View style={styles.bellDot}><Text style={styles.bellDotTxt}>{notifCount > 9 ? '9+' : notifCount}</Text></View>}
           </AccessiblePressable>
-          <AccessiblePressable onPress={() => router.push('/emergency')} style={styles.emergencyBtn} testID="home-emergency-btn">
+          <AccessiblePressable onPress={() => router.push('/emergency')} style={styles.emergencyBtn} testID="home-emergency-btn" label="Cartão de emergência">
             <Ionicons name="medical" size={22} color={colors.brandSecondary} />
           </AccessiblePressable>
         </View>

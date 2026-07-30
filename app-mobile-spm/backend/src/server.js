@@ -5,8 +5,13 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { PrismaClient } from '@prisma/client';
 import os from 'os';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const prisma = new PrismaClient();
 const app = express();
@@ -32,10 +37,10 @@ app.use((req, res, next) => {
 
 const port = Number(process.env.PORT || 8000);
 const host = process.env.HOST || '0.0.0.0';
-const jwtSecret = process.env.JWT_SECRET_PATIENT || 'dev-patient-secret';
-const jwtExpiresIn = process.env.JWT_EXPIRES_IN_PATIENT || '30d';
+const jwtSecret = process.env.JWT_SECRET_PATIENT || process.env.JWT_SECRET || 'dev-patient-secret';
+const jwtExpiresIn = process.env.JWT_EXPIRES_IN_PATIENT || process.env.JWT_EXPIRES_IN || '30d';
 const webBackendUrl = String(process.env.WEB_BACKEND_URL || 'http://127.0.0.1:8001').replace(/\/$/, '');
-const internalServiceSecret = process.env.INTERNAL_SERVICE_SECRET || '';
+const internalServiceSecret = String(process.env.INTERNAL_SERVICE_SECRET || 'spm-internal-service-secret').trim();
 
 function signToken(auth) {
   return jwt.sign({ sub: auth.id, role: auth.role }, jwtSecret, { expiresIn: jwtExpiresIn });
@@ -529,6 +534,9 @@ app.put('/api/auth/me', authMiddleware, async (req, res) => {
     address: payload.address,
     birthDate: payload.birthdate ? new Date(payload.birthdate) : payload.birthDate ? new Date(payload.birthDate) : undefined,
     sex: payload.gender,
+    bloodType: payload.blood_type || payload.bloodType,
+    medicationPhotoRequired: payload.medication_photo_required ?? payload.medicationPhotoRequired,
+    accessibilityEnabled: payload.accessibility_enabled ?? payload.accessibilityEnabled,
   };
 
   const patient = await prisma.patient.update({

@@ -1,4 +1,6 @@
-import "dotenv/config";
+import fs from "fs";
+import path from "path";
+import dotenv from "dotenv";
 import express from "express";
 import "express-async-errors";
 import cors from "cors";
@@ -6,9 +8,10 @@ import cookieParser from "cookie-parser";
 import bcrypt from "bcryptjs";
 import { randomUUID } from "crypto";
 import { prisma, signToken, requireAuth, requireRoles, audit } from "./auth.js";
-import fs from "fs";
-import path from "path";
 import integrationRoutes from "./integration-routes.js";
+
+const envPath = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", ".env");
+dotenv.config({ path: envPath });
 
 const app = express();
 app.use(cors({ origin: true, credentials: true }));
@@ -124,6 +127,26 @@ const toPatient = (p) => ({
   missed_count: p.missedCount,
   blocked_online: p.blockedOnline,
 });
+
+const hasCorruptedProfileText = (p) => {
+  const fieldsToCheck = [
+    p.address,
+    p.motherName,
+    p.fatherName,
+    p.susCard,
+    p.cep,
+    p.cityState,
+    p.nearestUnit,
+    p.emergencyContactName,
+    p.emergencyContactPhone,
+    p.substanceUse,
+    p.allergies,
+    p.chronicConditions,
+  ];
+  return fieldsToCheck.some(
+    (value) => typeof value === "string" && value.includes("�"),
+  );
+};
 const toAppt = (a) => ({
   id: a.id,
   patient_id: a.patientId,
@@ -149,6 +172,18 @@ const parseJson = (value, fallback = []) => {
   } catch {
     return fallback;
   }
+};
+const normalizePrescriptionSchedule = (value) => {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item).trim()).filter(Boolean);
+  }
+  if (typeof value === "string") {
+    return value
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  return [];
 };
 const toPrescription = (r) => ({
   id: r.id,
@@ -358,9 +393,18 @@ api.get("/patients/:id", requireAuth, async (req, res) => {
       p.emergencyContactPhone == null ||
       p.substanceUse == null ||
       p.allergies == null ||
-      p.chronicConditions == null);
+      p.chronicConditions == null ||
+      hasCorruptedProfileText(p));
+
+  console.log("patient hydration check", {
+    patientId: p.id,
+    email: p.email,
+    needsDemoProfileHydration,
+    hasCorruptedProfileText: hasCorruptedProfileText(p),
+  });
 
   if (needsDemoProfileHydration) {
+    console.log("hydrating demo patient profile", p.id);
     p = await prisma.patient.update({
       where: { id: p.id },
       data: demoDefaultProfile,
@@ -453,6 +497,10 @@ api.post("/patients", requireAuth, requireRoles("atendente", "admin"), async (re
   }
   if (temporaryPassword.length < 8) {
     return res.status(422).json({ detail: "A senha temporária deve ter ao menos 8 caracteres." });
+  }
+  const existingPatient = await prisma.patient.findFirst({ where: { OR: [{ cpf: req.body.cpf.trim() }, { email }] } });
+  if (existingPatient) {
+    return res.status(409).json({ detail: "CPF ou e-mail já cadastrado." });
   }
 
   try {
@@ -1136,10 +1184,15 @@ api.post(
   requireRoles("medico"),
   async (req, res) => {
     const { patient_id, active_substance, justification } = req.body;
-    const schedules = Array.isArray(req.body.schedule) ? req.body.schedule : [];
+    const schedules = normalizePrescriptionSchedule(req.body.schedule);
     const durationDays = Number(req.body.duration_days);
+    const initialQuantityValue = req.body.initial_quantity ?? req.body.stock ?? req.body.quantity ?? null;
+    const initialQuantity = initialQuantityValue === null || initialQuantityValue === "" ? null : Number(initialQuantityValue);
     if (!patient_id || !active_substance || !req.body.medication || !Number.isInteger(durationDays) || durationDays <= 0) {
       return res.status(422).json({ detail: "Dados da receita inválidos." });
+    }
+    if (initialQuantity !== null && (!Number.isFinite(initialQuantity) || initialQuantity < 0)) {
+      return res.status(422).json({ detail: "A quantidade inicial deve ser um número válido." });
     }
     try {
       const p = await prisma.$transaction(
@@ -1181,8 +1234,8 @@ api.post(
               schedules: JSON.stringify(schedules),
               startDate: new Date(),
               endDate: new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000),
-              initialQuantity: req.body.initial_quantity ?? null,
-              remainingQuantity: req.body.initial_quantity ?? null,
+              initialQuantity,
+              remainingQuantity: initialQuantity,
               antiBurlaEnabled: !!req.body.anti_burla_enabled,
             },
           });

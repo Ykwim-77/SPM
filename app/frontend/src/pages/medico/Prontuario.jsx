@@ -58,6 +58,7 @@ export default function Prontuario() {
     duration_days: 30,
     route: "Oral",
     schedule: "08:00",
+    initial_quantity: "30",
   });
   const [override, setOverride] = useState({ show: false, justification: "" });
   const [sigtap, setSigtap] = useState([]);
@@ -122,6 +123,7 @@ export default function Prontuario() {
           .split(",")
           .map((s) => s.trim())
           .filter(Boolean),
+        initial_quantity: form.initial_quantity ? Number(form.initial_quantity) : null,
         justification: override.show ? override.justification : null,
       };
       const { data } = await api.post("/prescriptions", payload);
@@ -545,6 +547,17 @@ export default function Prontuario() {
                 value={form.schedule}
                 onChange={(e) => setForm({ ...form, schedule: e.target.value })}
                 className="inp"
+              />
+            </Field>
+            <Field label="Quantidade na caixa (comprimidos)">
+              <input
+                data-testid="rx-initial-quantity"
+                type="number"
+                min="1"
+                value={form.initial_quantity}
+                onChange={(e) => setForm({ ...form, initial_quantity: e.target.value })}
+                className="inp"
+                placeholder="Ex.: 30"
               />
             </Field>
           </div>
