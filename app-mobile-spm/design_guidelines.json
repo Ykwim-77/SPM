@@ -1,0 +1,244 @@
+{
+  "app_name": "Saúde na Palma da Mão",
+  "personality": "1 iOS-Native Clean (Modified for Accessibility)",
+  "personality_one_liner": "An incredibly intuitive, highly legible patient companion that feels trustworthy, structured, and completely un-intimidating for users of all digital skill levels.",
+  "color": {
+    "surface": "#F7F9FC",
+    "onSurface": "#0F172A",
+    "surfaceSecondary": "#FFFFFF",
+    "onSurfaceSecondary": "#1E293B",
+    "surfaceTertiary": "#F1F5F9",
+    "onSurfaceTertiary": "#334155",
+    "surfaceInverse": "#0F172A",
+    "onSurfaceInverse": "#FFFFFF",
+    "brand": "#0066CC",
+    "brandPrimary": "#0066CC",
+    "onBrandPrimary": "#FFFFFF",
+    "brandSecondary": "#00A650",
+    "onBrandSecondary": "#FFFFFF",
+    "brandTertiary": "#E6F0FA",
+    "onBrandTertiary": "#0066CC",
+    "success": "#00A650",
+    "onSuccess": "#FFFFFF",
+    "warning": "#F59E0B",
+    "onWarning": "#FFFFFF",
+    "error": "#EF4444",
+    "onError": "#FFFFFF",
+    "info": "#3B82F6",
+    "onInfo": "#FFFFFF",
+    "border": "#E2E8F0",
+    "borderStrong": "#CBD5E1",
+    "divider": "#F1F5F9"
+  },
+  "typography": {
+    "displayFontFamily": "Plus Jakarta Sans",
+    "textFontFamily": "Plus Jakarta Sans",
+    "scale": {
+      "sm": 14,
+      "base": 16,
+      "lg": 18,
+      "xl": 22,
+      "2xl": 28
+    }
+  },
+  "spacing": {
+    "rule": "Generous spacing. Touch targets must be strictly >= 48pt. Padding in cards should be `lg` to avoid cramped text.",
+    "xs": 4,
+    "sm": 8,
+    "md": 16,
+    "lg": 24,
+    "xl": 32,
+    "2xl": 48,
+    "3xl": 64
+  },
+  "radius_tokens": {
+    "sm": 8,
+    "md": 16,
+    "lg": 24,
+    "pill": 999
+  },
+  "shadow_tier": 1,
+  "navigation": "bottom_tabs",
+  "icon_set": "Ionicons",
+  "glassmorphism": {
+    "enabled": true,
+    "do's": [
+      "Use on the bottom tab bar.",
+      "Use on sticky headers when scrolling content goes underneath.",
+      "Use on the floating 'Agendar Consulta' or 'Tomar Remédio' primary CTA at the bottom of the screen."
+    ],
+    "dont's": [
+      "Do not use on data cards, list rows, or form inputs. Keep medical info crisp on solid backgrounds."
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Login",
+      "purpose": "Authenticate the patient simply using email and password.",
+      "states": {
+        "loading": "Centered spinner on surface.",
+        "empty": "N/A",
+        "error": "Inline error above the CTA or standard alert."
+      },
+      "layout": "Large logo/title at the top, clear large input fields (16pt font inside), huge primary button. 'Esqueci a senha' accessible below CTA."
+    },
+    {
+      "name": "Register",
+      "purpose": "Onboard a new patient with their basic details.",
+      "states": {
+        "loading": "Spinner over submit CTA.",
+        "empty": "N/A",
+        "error": "Validation errors under inputs."
+      },
+      "layout": "Scrollable form with clearly labeled fields (Email, Senha, Nome, CPF). Sticky CTA at the bottom."
+    },
+    {
+      "name": "Home Dashboard",
+      "purpose": "Provide a quick daily summary of the patient's actionable items (next med, next appointment).",
+      "states": {
+        "loading": "Skeleton cards for the top 'Resumo do Dia' section.",
+        "empty": "Illustration of a healthy day, 'Tudo em dia! Nenhum remédio ou consulta hoje.'",
+        "error": "Error loading day's summary with a retry button."
+      },
+      "layout": "Header with 'Olá, [Nome]' and avatar. A large 'Resumo do Dia' hero card (tinted `brandTertiary` or `surfaceSecondary`) showing the immediate next action. Below that, quick access tiles for Documentos/Exames."
+    },
+    {
+      "name": "Appointments List",
+      "purpose": "List upcoming and past medical appointments.",
+      "states": {
+        "loading": "Skeleton list rows.",
+        "empty": "'Nenhuma consulta agendada.' with a primary 'Agendar Agora' button.",
+        "error": "Failed to load appointments, retry."
+      },
+      "layout": "Segmented control (Próximas, Histórico). List of cards with Doctor name, Specialty, Date/Time, and Status (Confirmada, Fila de Espera). Sticky FAB or bottom button to schedule."
+    },
+    {
+      "name": "Appointment Detail",
+      "purpose": "Show details of a specific appointment and allow cancellation.",
+      "states": {
+        "loading": "Full screen spinner.",
+        "empty": "N/A",
+        "error": "Retry loading details."
+      },
+      "layout": "Doctor's photo (from images) at top, large text for Date/Time. Location map or clinic details. Big 'Cancelar Consulta' button at the bottom (colored warning or outline)."
+    },
+    {
+      "name": "Appointment Booking",
+      "purpose": "Flow to schedule a new appointment.",
+      "states": {
+        "loading": "Spinner when fetching available slots.",
+        "empty": "No slots available for chosen date.",
+        "error": "Failed to load schedule."
+      },
+      "layout": "Step-by-step: Select Specialty -> Select Doctor -> Select Date/Time. Large tap areas for dates. Sticky confirmation button at bottom."
+    },
+    {
+      "name": "Medications List",
+      "purpose": "Show patient's daily medication schedule.",
+      "states": {
+        "loading": "Skeleton rows.",
+        "empty": "'Nenhum remédio cadastrado.' Add button below.",
+        "error": "Failed to load meds."
+      },
+      "layout": "Horizontal calendar strip at the top. Below, a vertical timeline of medications for the selected day. Med cards have a large 'Tomar' check button."
+    },
+    {
+      "name": "Medication Detail",
+      "purpose": "Show info about a medication and its stock.",
+      "states": {
+        "loading": "Spinner.",
+        "empty": "N/A",
+        "error": "Error loading med details."
+      },
+      "layout": "Large pill icon/photo. Dosage, frequency, and a stock progress bar (e.g., 10/30 pills left). Low stock shows a warning banner."
+    },
+    {
+      "name": "Medication Take Dose",
+      "purpose": "Anti-fraud camera capture screen to confirm taking medication.",
+      "states": {
+        "loading": "Processing image.",
+        "empty": "N/A",
+        "error": "Camera permission denied."
+      },
+      "layout": "Full-screen camera view with a large circular shutter button. Overlay text: 'Tire uma foto do remédio'. Confirmed state shows a success checkmark."
+    },
+    {
+      "name": "Exams List",
+      "purpose": "List available medical documents and ready exams.",
+      "states": {
+        "loading": "Skeleton rows.",
+        "empty": "'Nenhum exame disponível.'",
+        "error": "Failed to load."
+      },
+      "layout": "List of distinct cards (Exame de Sangue, Receita Médica). Tag indicating 'Pronto' or 'Em análise'."
+    },
+    {
+      "name": "Exam Detail",
+      "purpose": "View a specific exam or prescription.",
+      "states": {
+        "loading": "Loading PDF or details.",
+        "empty": "N/A",
+        "error": "Failed to load file."
+      },
+      "layout": "Metadata at the top (Doctor, Date). A large viewer area for the document or text summary. 'Baixar PDF' primary action."
+    },
+    {
+      "name": "Emergency Card",
+      "purpose": "Glanceable medical ID for emergencies.",
+      "states": {
+        "loading": "N/A",
+        "empty": "N/A",
+        "error": "N/A"
+      },
+      "layout": "Distinct colored card (brandSecondary / Green) rotated horizontally or taking full screen. Shows Blood Type, Allergies, and Emergency Contacts prominently."
+    },
+    {
+      "name": "Profile",
+      "purpose": "Manage personal info and app settings.",
+      "states": {
+        "loading": "Spinner.",
+        "empty": "N/A",
+        "error": "Retry."
+      },
+      "layout": "Avatar and Name. List of standard settings rows (Dados Pessoais, Contato de Emergência, Notificações, Sair) with icons in `brandTertiary` tinted squares."
+    }
+  ],
+  "images": {
+    "doctor_male": {
+      "url": "https://images.pexels.com/photos/12660379/pexels-photo-12660379.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "alt": "Friendly male doctor smiling"
+    },
+    "doctor_female": {
+      "url": "https://images.unsplash.com/photo-1659353888906-adb3e0041693?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2OTV8MHwxfHNlYXJjaHwxfHxmcmllbmRseSUyMGZlbWFsZSUyMGRvY3RvciUyMHBvcnRyYWl0fGVufDB8fHx8MTc4MzMzNzU1Nnww&ixlib=rb-4.1.0&q=85",
+      "alt": "Friendly female doctor portrait"
+    },
+    "medicine_pills": {
+      "url": "https://images.pexels.com/photos/14387794/pexels-photo-14387794.jpeg",
+      "alt": "Pink pill organizer with colorful tablets"
+    },
+    "clinic_hero": {
+      "url": "https://images.pexels.com/photos/38340570/pexels-photo-38340570.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "alt": "Clinic at night"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Strictly adhere to the Green (#00A650) and Blue (#0066CC) color palette requested by the user, representing health and trust (SUS context).",
+    "Ensure touch targets are strictly >= 44pt (ideally larger for this demographic) and text size is boosted. The base text size should be 16pt, not 14pt.",
+    "Do NOT use pure black text. Use the provided onSurface (#0F172A) for high contrast while reducing eye strain.",
+    "When a button is floating over scrollable content, ensure it has a glassmorphic background to maintain visual hierarchy without completely blocking content.",
+    "In the 'Tomar Remédio' flow, implement the camera capture screen as an anti-fraud measure, ensuring it is a full-screen view with a huge, unmistakable capture button.",
+    "Do not use generic 'Inter' or 'Roboto'. Implement 'Plus Jakarta Sans' for superior readability and a cleaner, friendly aesthetic."
+  ]
+}

@@ -323,8 +323,50 @@ api.get("/patients", requireAuth, async (req, res) => {
   res.json((await prisma.patient.findMany({ where })).map(toPatient));
 });
 api.get("/patients/:id", requireAuth, async (req, res) => {
-  const p = await prisma.patient.findUnique({ where: { id: req.params.id } });
+  let p = await prisma.patient.findUnique({ where: { id: req.params.id } });
   if (!p) return res.status(404).json({ detail: "Paciente não encontrado" });
+
+  const demoDefaultProfile = {
+    birthDate: new Date("1988-05-15T00:00:00.000Z"),
+    address: "Rua Saúde, 123, Palmeira",
+    motherName: "Maria Demo",
+    fatherName: "José Demo",
+    susCard: "000000000000000",
+    cep: "01000-000",
+    cityState: "São Paulo / SP",
+    nearestUnit: "UBS Centro",
+    emergencyContactName: "Contato Demo",
+    emergencyContactPhone: "(11) 98888-7777",
+    substanceUse: "Não informado",
+    allergies: "Nenhuma",
+    chronicConditions: "Hipertensão",
+    lgpdAccepted: true,
+    blockedOnline: false,
+  };
+
+  const needsDemoProfileHydration =
+    p.email === "demo@saudepalma.com.br" &&
+    (p.birthDate == null ||
+      p.address == null ||
+      p.motherName == null ||
+      p.fatherName == null ||
+      p.susCard == null ||
+      p.cep == null ||
+      p.cityState == null ||
+      p.nearestUnit == null ||
+      p.emergencyContactName == null ||
+      p.emergencyContactPhone == null ||
+      p.substanceUse == null ||
+      p.allergies == null ||
+      p.chronicConditions == null);
+
+  if (needsDemoProfileHydration) {
+    p = await prisma.patient.update({
+      where: { id: p.id },
+      data: demoDefaultProfile,
+    });
+  }
+
   const base = toPatient(p);
   let historyConsent = await prisma.consentRecord.findUnique({
     where: { patientId_purpose: { patientId: p.id, purpose: "doctor_history_view" } },
@@ -383,6 +425,7 @@ api.get("/patients/:id", requireAuth, async (req, res) => {
   });
   res.json({
     ...base,
+    history_hidden: false,
     prescriptions_history: prescs.map(toPrescription),
     appointments_history: appointments.map((a) => ({
       id: a.id,

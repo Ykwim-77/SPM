@@ -1,0 +1,26 @@
+{
+  "name": "saude-palma-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "prisma:generate": "prisma generate --schema ../../shared/prisma/schema.prisma",
+    "test": "node --test tests/*.test.js"
+  },
+  "prisma": {
+    "schema": "../../shared/prisma/schema.prisma"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.0.0",
+    "bcryptjs": "^2.4.0",
+    "cors": "^2.8.0",
+    "dotenv": "^16.4.0",
+    "express": "^4.21.0",
+    "jsonwebtoken": "^9.0.3"
+  },
+  "devDependencies": {
+    "prisma": "^6.0.0"
+  }
+}
