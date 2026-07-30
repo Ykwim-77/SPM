@@ -1,0 +1,102 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+    /* Saúde na Palma da Mão institutional palette */
+    --sc-bg: 220 20% 96%;
+    --sc-surface: 0 0% 100%;
+    --sc-primary: 213 47% 23%;       /* #1D3557 Prussian */
+    --sc-secondary: 205 39% 44%;     /* #457B9D Steel */
+    --sc-alert: 12 74% 61%;          /* #E76F51 Terracotta */
+    --sc-warning: 40 76% 66%;        /* #E9C46A */
+    --sc-success: 122 43% 20%;       /* deep green */
+    --sc-text: 217 32% 17%;
+    --sc-text-muted: 215 16% 47%;
+    --sc-border: 215 20% 90%;
+
+    --background: 220 20% 97%;
+    --foreground: 217 32% 17%;
+    --card: 0 0% 100%;
+    --card-foreground: 217 32% 17%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 217 32% 17%;
+    --primary: 213 47% 23%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 20% 94%;
+    --secondary-foreground: 217 32% 17%;
+    --muted: 220 15% 94%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 205 39% 44%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 12 74% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 215 20% 88%;
+    --input: 215 20% 88%;
+    --ring: 213 47% 23%;
+    --chart-1: 213 47% 23%;
+    --chart-2: 205 39% 44%;
+    --chart-3: 12 74% 61%;
+    --chart-4: 40 76% 66%;
+    --chart-5: 174 42% 44%;
+    --radius: 0.5rem;
+}
+
+body {
+    margin: 0;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+    -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, h5, .font-display {
+    font-family: 'Manrope', system-ui, sans-serif;
+    letter-spacing: -0.015em;
+}
+
+.font-mono-nums {
+    font-family: 'JetBrains Mono', monospace;
+    font-variant-numeric: tabular-nums;
+}
+
+@layer base {
+    * { @apply border-border; }
+    body { @apply bg-background text-foreground; }
+}
+
+/* Countdown pulse for critical time */
+@keyframes sc-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(231, 111, 81, 0.5); }
+    50% { box-shadow: 0 0 0 6px rgba(231, 111, 81, 0); }
+}
+.pulse-alert { animation: sc-pulse 1.6s ease-in-out infinite; }
+
+/* Sidebar link */
+.sc-nav-link {
+    display: flex; align-items: center; gap: 0.75rem;
+    padding: 0.65rem 1rem; border-radius: 0.5rem;
+    color: rgba(248, 249, 250, 0.75);
+    font-weight: 500; font-size: 0.9rem;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+.sc-nav-link:hover { background: rgba(255, 255, 255, 0.06); color: #fff; }
+.sc-nav-link.active { background: rgba(69, 123, 157, 0.35); color: #fff; }
+
+/* Card lift */
+.sc-card {
+    background: #fff; border: 1px solid hsl(var(--border));
+    border-radius: 0.75rem; padding: 1.5rem;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.sc-card:hover { transform: translateY(-1px); box-shadow: 0 8px 24px -12px rgba(29, 53, 87, 0.15); }
+
+.overline {
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: hsl(var(--muted-foreground));
+}

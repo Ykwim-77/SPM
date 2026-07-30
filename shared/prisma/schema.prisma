@@ -1,0 +1,340 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:../saude.db"
+}
+
+model User {
+  id                String                @id @default(uuid())
+  email             String                @unique
+  passwordHash      String
+  name              String
+  role              String
+  crm               String?
+  specialty         String?
+  unit              String?
+  healthUnitId      String?
+  healthUnit        HealthUnit?           @relation(fields: [healthUnitId], references: [id])
+  active            Boolean               @default(true)
+  createdAt         DateTime              @default(now())
+  appointments      Appointment[]
+  prescriptions     Prescription[]
+  examsRequest      Exam[]                @relation("ExamRequestedBy")
+  examsDeliver      Exam[]                @relation("ExamDeliveredBy")
+  auditLogs         AuditLog[]
+  stockTransactions StockTransaction[]
+  doctorLocks       DoctorScheduleLock[]  @relation("DoctorLocks")
+  lockedBy          DoctorScheduleLock[]  @relation("LockedBy")
+  unlockedBy        DoctorScheduleLock[]  @relation("UnlockedBy")
+}
+
+model UserAuth {
+  id                 String       @id @default(uuid())
+  role               String
+  email              String       @unique
+  passwordHash       String
+  mustChangePassword Boolean      @default(true)
+  patientId          String?      @unique
+  patient            Patient?     @relation(fields: [patientId], references: [id])
+  responsavelId      String?      @unique
+  responsavel        Responsavel? @relation(fields: [responsavelId], references: [id])
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+}
+
+model Patient {
+  id                     String                @id @default(uuid())
+  cpf                    String                @unique
+  name                   String
+  email                  String?               @unique
+  phone                  String?
+  birthDate              DateTime?
+  address                String?
+  sex                    String?
+  motherName             String?
+  fatherName             String?
+  susCard                String?
+  cep                    String?
+  cityState              String?
+  nearestUnit            String?
+  emergencyContactName   String?
+  emergencyContactPhone  String?
+  substanceUse           String?
+  allergies              String?
+  chronicConditions      String?
+  lgpdAccepted           Boolean               @default(false)
+  missedCount            Int                   @default(0)
+  blockedOnline          Boolean               @default(false)
+  blockReason            String?
+  active                 Boolean               @default(true)
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+  userAuth               UserAuth?
+  appointments           Appointment[]
+  prescriptions          Prescription[]
+  medications            Medication[]
+  exams                  Exam[]
+  waitingList            WaitingList[]
+  vacancies              Vacancy[]
+  consentRecords         ConsentRecord[]
+  medicationLogs         MedicationLog[]
+  adherenceAlerts        AdherenceAlert[]
+  patientResponsaveis    PatientResponsavel[]
+}
+
+model Responsavel {
+  id                  String                @id @default(uuid())
+  name                String
+  email               String?               @unique
+  phone               String?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  userAuth            UserAuth?
+  patientResponsaveis PatientResponsavel[]
+}
+
+model PatientResponsavel {
+  id               String      @id @default(uuid())
+  patientId        String
+  responsavelId    String
+  consentGranted   Boolean     @default(true)
+  createdAt        DateTime    @default(now())
+  patient          Patient     @relation(fields: [patientId], references: [id])
+  responsavel      Responsavel @relation(fields: [responsavelId], references: [id])
+
+  @@unique([patientId, responsavelId])
+}
+
+model Appointment {
+  id            String               @id @default(uuid())
+  patientId     String
+  doctorId      String
+  specialty     String
+  scheduledAt   DateTime
+  priority      String               @default("normal")
+  unit          String               @default("UBS Central")
+  status        String               @default("aguardando")
+  justification String?
+  checkedIn     Boolean              @default(false)
+  type          String               @default("presencial")
+  lockId        String?
+  createdAt     DateTime             @default(now())
+  patient       Patient              @relation(fields: [patientId], references: [id])
+  doctor        User?                 @relation(fields: [doctorId], references: [id])
+  lock          DoctorScheduleLock?  @relation(fields: [lockId], references: [id])
+
+  @@index([doctorId, scheduledAt])
+  @@index([patientId, scheduledAt])
+}
+
+model OnlineSlotConfig {
+  id               String   @id @default(uuid())
+  unit             String
+  dayOfWeek        Int
+  onlinePercentage Int      @default(50)
+  maxOnlineSlots   Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([unit, dayOfWeek])
+}
+
+model Prescription {
+  id              String       @id @default(uuid())
+  patientId       String
+  doctorId        String
+  doctorName      String
+  doctorCrm       String?
+  medication      String
+  activeSubstance String
+  dosage          String
+  frequency       String
+  durationDays    Int
+  route           String       @default("Oral")
+  schedule        String
+  validationCode  String
+  active          Boolean      @default(true)
+  adherenceLogs   String       @default("[]")
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  patient         Patient      @relation(fields: [patientId], references: [id])
+  doctor          User         @relation(fields: [doctorId], references: [id])
+  medications     Medication[]
+}
+
+model Medication {
+  id                 String           @id @default(uuid())
+  patientId          String
+  patient            Patient          @relation(fields: [patientId], references: [id])
+  prescriptionId     String?
+  prescription       Prescription?    @relation(fields: [prescriptionId], references: [id])
+  name               String
+  dosage             String?
+  frequency          String?
+  schedules          String?
+  startDate          DateTime?
+  endDate            DateTime?
+  initialQuantity    Int?
+  remainingQuantity  Int?
+  antiBurlaEnabled   Boolean          @default(false)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  logs               MedicationLog[]
+}
+
+model Exam {
+  id               String    @id @default(uuid())
+  patientId        String
+  exam             String
+  preparationNotes String?
+  urgent           Boolean   @default(false)
+  status           String    @default("pendente")
+  lab_externo      String?
+  requestedById    String
+  deliveredById    String?
+  deliveredAt      DateTime?
+  readyAt          DateTime?
+  withdrawnAt      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  patient          Patient   @relation(fields: [patientId], references: [id])
+  requestedBy      User      @relation("ExamRequestedBy", fields: [requestedById], references: [id])
+  deliveredBy      User?     @relation("ExamDeliveredBy", fields: [deliveredById], references: [id])
+
+  @@index([status, readyAt])
+}
+
+model ConsentRecord {
+  id        String   @id @default(uuid())
+  patientId String
+  patient   Patient  @relation(fields: [patientId], references: [id])
+  purpose   String
+  granted   Boolean
+  updatedAt DateTime @updatedAt
+
+  @@unique([patientId, purpose])
+}
+
+model MedicationLog {
+  id           String     @id @default(uuid())
+  patientId    String
+  patient      Patient    @relation(fields: [patientId], references: [id])
+  medicationId String
+  medication   Medication @relation(fields: [medicationId], references: [id])
+  confirmedAt  DateTime   @default(now())
+  photoRef     String?
+  source       String?
+}
+
+model AdherenceAlert {
+  id             String    @id @default(uuid())
+  patientId      String
+  patient        Patient   @relation(fields: [patientId], references: [id])
+  prescriptionId String?
+  pattern        String
+  createdAt      DateTime  @default(now())
+}
+
+model HealthUnit {
+  id           String             @id @default(uuid())
+  name         String
+  users        User[]
+  stocks       MedicineStock[]
+  transactions StockTransaction[]
+}
+
+model MedicineStock {
+  id           String     @id @default(uuid())
+  healthUnitId String
+  medicineId   String
+  quantity     Int        @default(0)
+  updatedAt    DateTime   @default(now()) @updatedAt
+  healthUnit   HealthUnit @relation(fields: [healthUnitId], references: [id])
+
+  @@unique([healthUnitId, medicineId])
+}
+
+model StockTransaction {
+  id              String     @id @default(uuid())
+  healthUnitId    String
+  medicineId      String
+  medicineName    String
+  medicineDetails String?
+  userId          String
+  type            String
+  quantity        Int
+  createdAt       DateTime   @default(now())
+  healthUnit      HealthUnit @relation(fields: [healthUnitId], references: [id])
+  user            User       @relation(fields: [userId], references: [id])
+
+  @@index([healthUnitId, medicineId])
+  @@index([createdAt])
+}
+
+model WaitingList {
+  id        String   @id @default(uuid())
+  patientId String
+  specialty String
+  status    String   @default("waiting")
+  createdAt DateTime @default(now())
+  patient   Patient  @relation(fields: [patientId], references: [id])
+}
+
+model Vacancy {
+  id          String   @id @default(uuid())
+  patientId   String
+  patientName String
+  specialty   String
+  unit        String
+  notifiedAt  DateTime
+  deadline    DateTime
+  status      String   @default("waiting_response")
+  patient     Patient  @relation(fields: [patientId], references: [id])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String
+  userName  String
+  userRole  String
+  action    String
+  target    String   @default("")
+  details   String   @default("{}")
+  timestamp DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model AppointmentConfig {
+  id             String   @id @default(uuid())
+  specialty      String
+  dayOfWeek      Int?
+  specificDate   String?
+  maxOnlineSlots Int      @default(10)
+  maxTotalSlots  Int      @default(20)
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  createdById    String
+}
+
+model DoctorScheduleLock {
+  id           String        @id @default(uuid())
+  doctorId     String
+  date         DateTime
+  reason       String
+  lockedAt     DateTime      @default(now())
+  lockedById   String
+  unlockedAt   DateTime?
+  unlockedById String?
+  active       Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  doctor       User          @relation("DoctorLocks", fields: [doctorId], references: [id])
+  lockedBy     User          @relation("LockedBy", fields: [lockedById], references: [id])
+  unlockedBy   User?         @relation("UnlockedBy", fields: [unlockedById], references: [id])
+  appointments Appointment[]
+
+  @@index([doctorId, date])
+}
