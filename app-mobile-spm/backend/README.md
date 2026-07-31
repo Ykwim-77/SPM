@@ -10,9 +10,11 @@ npm start
 
 ## Banco
 
-Este projeto usa SQLite via Prisma. O arquivo do banco fica em:
+Este projeto usa SQLite via Prisma. O banco compartilhado fica em:
 
-- backend/dev.db
+- ../shared/saude.db
+
+O backend mobile carrega o caminho do banco em `app-mobile-spm/backend/.env` via `DATABASE_URL`.
 
 ## Variáveis de ambiente
 

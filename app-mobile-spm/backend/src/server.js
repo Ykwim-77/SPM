@@ -13,6 +13,12 @@ const __dirname = path.dirname(__filename);
 
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
+const databaseUrl = String(process.env.DATABASE_URL || '').trim();
+if (!databaseUrl) {
+  throw new Error('DATABASE_URL is required for the mobile backend. Check app-mobile-spm/backend/.env or environment variables.');
+}
+console.log(`mobile-backend: using DATABASE_URL=${databaseUrl}`);
+
 const prisma = new PrismaClient();
 const app = express();
 app.use(cors());
@@ -156,6 +162,11 @@ async function resolveAppointmentDoctorMap(appointments) {
   return new Map(doctors.map((doctor) => [doctor.id, doctor]));
 }
 
+function normalizeExamStatus(status) {
+  if (status === 'laudo_pronto' || status === 'retirado') return 'ready';
+  return 'pending';
+}
+
 function serializeExam(item) {
   const dateValue = item.readyAt || item.createdAt;
   return {
@@ -165,7 +176,7 @@ function serializeExam(item) {
     kind: 'exam',
     doctor_name: item.requestedBy?.name || null,
     date: dateValue ? new Date(dateValue).toISOString() : null,
-    status: item.status,
+    status: normalizeExamStatus(item.status),
     summary: item.preparationNotes || null,
     file_url: null,
     created_at: item.createdAt,
@@ -479,6 +490,7 @@ app.post('/api/auth/login', async (req, res) => {
   if (!auth || !['patient', 'responsavel'].includes(auth.role)) return res.status(401).json({ detail: 'E-mail ou senha inválidos' });
 
   const ok = await bcrypt.compare(password, auth.passwordHash);
+  console.log(ok)
   if (!ok) return res.status(401).json({ detail: 'E-mail ou senha inválidos' });
   if (auth.mustChangePassword) {
     return res.status(403).json({
@@ -673,7 +685,7 @@ app.get('/api/dashboard', authMiddleware, async (req, res) => {
   res.json({
     next_appointment: nextAppointment || null,
     upcoming_count: upcoming.length,
-    exams_ready: exams.filter((item) => item.status === 'laudo_pronto').length,
+    exams_ready: exams.filter((item) => ['laudo_pronto', 'retirado'].includes(item.status)).length,
     exams_count: exams.length,
   });
 });

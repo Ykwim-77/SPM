@@ -8,7 +8,17 @@ import {
   Boxes,
   Download,
   Search,
+  Building2,
+  Lock,
+  AlertTriangle,
 } from "lucide-react";
+
+// Dosagens comuns pré-definidas — o atendente pode escolher ou digitar outra
+const DOSAGE_PRESETS = [
+  "5mg", "10mg", "20mg", "25mg", "50mg", "75mg",
+  "100mg", "150mg", "200mg", "250mg", "500mg",
+  "750mg", "850mg", "1g", "5ml", "10ml", "15ml", "20ml",
+];
 
 const defaultForm = () => ({
   medicine: "",
@@ -327,6 +337,41 @@ export default function StockManagement({
     }
   };
 
+  // Lista de medicamentos já conhecidos (saldo + histórico), para autocomplete
+  // — reduz erro de digitação e evita duplicar o mesmo remédio com nomes diferentes
+  const knownMedicines = useMemo(() => {
+    const names = new Set();
+    stockItems.forEach((item) => item.medicineName && names.add(item.medicineName));
+    movements.forEach((item) => item.medicineName && names.add(item.medicineName));
+    return Array.from(names).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [stockItems, movements]);
+
+  // Medicamentos mais movimentados recentemente, para acesso rápido em 1 clique
+  const topMedicines = useMemo(() => {
+    const counts = new Map();
+    movements.forEach((item) => {
+      if (!item.medicineName) return;
+      counts.set(item.medicineName, (counts.get(item.medicineName) || 0) + 1);
+    });
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([name]) => name);
+  }, [movements]);
+
+  const getBalance = (unitId, medicineName) => {
+    if (!unitId || !medicineName?.trim()) return null;
+    const term = medicineName.trim().toLowerCase();
+    const match = stockItems.find(
+      (item) =>
+        item.unitId === unitId &&
+        (item.medicineName || "").trim().toLowerCase() === term,
+    );
+    return match ? match.quantity : 0;
+  };
+
+  const userUnit = units.find((u) => u.id === user?.healthUnitId);
+
   const renderForm = (
     kind,
     form,
@@ -335,79 +380,229 @@ export default function StockManagement({
     description,
     submitLabel,
     submitAction,
-    buttonTone,
-  ) => (
-    <div className="grid grid-cols-1 gap-4">
-      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-        <div className="font-semibold text-[#1D3557]">{title}</div>
-        <div>{description}</div>
-      </div>
-      <label className="text-sm">Atendente</label>
-      <input
-        value={user?.name || "Carregando..."}
-        readOnly
-        className="inp bg-slate-50"
-      />
-      <label className="text-sm">Unidade</label>
-      <select
-        value={form.selectedUnitId}
-        onChange={(e) => updateForm({ selectedUnitId: e.target.value })}
-        className="inp"
-      >
-        <option value="">Selecione a unidade</option>
-        {units.map((unit) => (
-          <option key={unit.id} value={unit.id}>
-            {unit.name}
-          </option>
-        ))}
-      </select>
-      <label className="text-sm">Medicamento</label>
-      <input
-        value={form.medicine}
-        onChange={(e) => updateForm({ medicine: e.target.value })}
-        className="inp"
-        placeholder="Nome ou código do medicamento"
-      />
-      <label className="text-sm">Dosagem</label>
-      <input
-        value={form.dosage}
-        onChange={(e) => updateForm({ dosage: e.target.value })}
-        className="inp"
-        placeholder="Ex.: 500mg"
-      />
-      <label className="text-sm">Lote / Referência</label>
-      <input
-        value={form.lot}
-        onChange={(e) => updateForm({ lot: e.target.value })}
-        className="inp"
-        placeholder="Opcional"
-      />
-      <label className="text-sm">Observações</label>
-      <textarea
-        value={form.notes}
-        onChange={(e) => updateForm({ notes: e.target.value })}
-        className="inp min-h-[90px]"
-        placeholder="Informações adicionais do medicamento"
-      />
-      <label className="text-sm">Quantidade</label>
-      <input
-        type="number"
-        min={1}
-        value={form.quantity}
-        onChange={(e) => updateForm({ quantity: Number(e.target.value) })}
-        className="inp"
-      />
-      <div className="flex justify-end">
-        <button
-          onClick={submitAction}
-          disabled={submitting}
-          className={buttonTone}
+  ) => {
+    const isExit = kind === "exit";
+    const balance = isExit ? getBalance(form.selectedUnitId, form.medicine) : null;
+    const overDraft = isExit && balance !== null && Number(form.quantity) > balance;
+    const canSubmit = form.medicine.trim() && Number(form.quantity) > 0 && form.selectedUnitId;
+
+    return (
+      <div className="space-y-5">
+        {/* Cabeçalho da operação */}
+        <div
+          className={`rounded-2xl p-5 flex items-start gap-4 border ${
+            isExit ? "bg-amber-50 border-amber-200" : "bg-emerald-50 border-emerald-200"
+          }`}
         >
-          {submitting ? "Processando..." : submitLabel}
-        </button>
+          <div
+            className={`w-11 h-11 rounded-xl flex items-center justify-center text-white shrink-0 ${
+              isExit ? "bg-amber-600" : "bg-emerald-600"
+            }`}
+          >
+            {isExit ? <ArrowDownCircle className="w-6 h-6" /> : <ArrowUpCircle className="w-6 h-6" />}
+          </div>
+          <div>
+            <div className="font-display font-bold text-lg text-[#1D3557]">{title}</div>
+            <div className="text-sm text-slate-600">{description}</div>
+          </div>
+        </div>
+
+        <div className="grid md:grid-cols-[260px_1fr] gap-5">
+          {/* Coluna lateral: contexto fixo (atendente / UBS / saldo) */}
+          <div className="space-y-4">
+            <div className="sc-card p-4">
+              <div className="overline text-[#457B9D] mb-2">Atendente</div>
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-[#1D3557]/10 text-[#1D3557] flex items-center justify-center font-bold text-sm shrink-0">
+                  {(user?.name || "?").charAt(0).toUpperCase()}
+                </div>
+                <div className="font-semibold text-[#1D3557] text-sm leading-tight">
+                  {user?.name || "Carregando..."}
+                </div>
+              </div>
+            </div>
+
+            <div className="sc-card p-4">
+              <div className="overline text-[#457B9D] mb-2">Unidade de saúde</div>
+              {userUnit ? (
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Building2 className="w-4 h-4 text-[#1D3557] shrink-0" />
+                    <span className="font-bold text-[#1D3557] text-sm">{userUnit.name}</span>
+                  </div>
+                  <div className="flex items-center gap-1 text-xs text-slate-500 mt-1.5">
+                    <Lock className="w-3 h-3" /> vinculada ao seu cadastro
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <select
+                    value={form.selectedUnitId}
+                    onChange={(e) => updateForm({ selectedUnitId: e.target.value })}
+                    className="inp"
+                  >
+                    <option value="">Selecione a unidade</option>
+                    {units.map((unit) => (
+                      <option key={unit.id} value={unit.id}>
+                        {unit.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-amber-600 flex items-start gap-1">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    Seu usuário não tem uma UBS vinculada. Peça ao administrador para configurar.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {isExit && form.medicine.trim() && (
+              <div className={`sc-card p-4 ${overDraft ? "border-red-300 bg-red-50" : ""}`}>
+                <div className="overline text-[#457B9D] mb-1">Saldo disponível</div>
+                <div className={`text-3xl font-extrabold font-mono-nums ${overDraft ? "text-red-600" : "text-[#1D3557]"}`}>
+                  {balance === null ? "—" : balance}
+                </div>
+                {overDraft && (
+                  <p className="text-xs text-red-600 mt-1.5 flex items-start gap-1">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    Quantidade maior que o saldo em estoque.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Coluna principal: dados da movimentação */}
+          <div className="sc-card p-5 space-y-5">
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">
+                Medicamento
+              </label>
+              <input
+                value={form.medicine}
+                onChange={(e) => updateForm({ medicine: e.target.value })}
+                list={`medicine-list-${kind}`}
+                className="inp"
+                placeholder="Digite ou selecione o nome do medicamento"
+              />
+              <datalist id={`medicine-list-${kind}`}>
+                {knownMedicines.map((name) => (
+                  <option key={name} value={name} />
+                ))}
+              </datalist>
+              {topMedicines.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {topMedicines.map((name) => (
+                    <button
+                      key={name}
+                      type="button"
+                      onClick={() => updateForm({ medicine: name })}
+                      className={`text-xs px-2.5 py-1 rounded-full border transition ${
+                        form.medicine === name
+                          ? isExit
+                            ? "border-amber-500 bg-amber-50 text-amber-700"
+                            : "border-emerald-500 bg-emerald-50 text-emerald-700"
+                          : "border-slate-200 bg-slate-50 text-slate-600 hover:border-[#457B9D] hover:text-[#457B9D]"
+                      }`}
+                    >
+                      {name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">
+                  Dosagem
+                </label>
+                <input
+                  value={form.dosage}
+                  onChange={(e) => updateForm({ dosage: e.target.value })}
+                  list={`dosage-list-${kind}`}
+                  className="inp"
+                  placeholder="Selecione ou digite"
+                />
+                <datalist id={`dosage-list-${kind}`}>
+                  {DOSAGE_PRESETS.map((d) => (
+                    <option key={d} value={d} />
+                  ))}
+                </datalist>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">
+                  Lote / Referência
+                </label>
+                <input
+                  value={form.lot}
+                  onChange={(e) => updateForm({ lot: e.target.value })}
+                  className="inp"
+                  placeholder="Opcional"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">
+                Quantidade
+              </label>
+              <div className="flex items-center gap-2 w-fit">
+                <button
+                  type="button"
+                  onClick={() => updateForm({ quantity: Math.max(1, Number(form.quantity || 1) - 1) })}
+                  className="w-10 h-10 rounded-lg border border-slate-200 text-lg font-bold text-[#1D3557] hover:bg-slate-50 transition"
+                >
+                  −
+                </button>
+                <input
+                  type="number"
+                  min={1}
+                  value={form.quantity}
+                  onChange={(e) => updateForm({ quantity: Number(e.target.value) })}
+                  className="inp w-24 text-center font-mono-nums"
+                />
+                <button
+                  type="button"
+                  onClick={() => updateForm({ quantity: Number(form.quantity || 0) + 1 })}
+                  className="w-10 h-10 rounded-lg border border-slate-200 text-lg font-bold text-[#1D3557] hover:bg-slate-50 transition"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">
+                Observações
+              </label>
+              <textarea
+                value={form.notes}
+                onChange={(e) => updateForm({ notes: e.target.value })}
+                className="inp min-h-[80px]"
+                placeholder="Informações adicionais (opcional)"
+              />
+            </div>
+
+            <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+              <div className="text-xs text-slate-400">
+                {overDraft ? "Revise a quantidade antes de confirmar." : " "}
+              </div>
+              <button
+                onClick={submitAction}
+                disabled={submitting || !canSubmit}
+                className={`px-6 py-3 rounded-lg font-semibold text-sm text-white transition disabled:opacity-50 disabled:cursor-not-allowed ${
+                  isExit ? "bg-amber-600 hover:bg-amber-700" : "bg-emerald-600 hover:bg-emerald-700"
+                }`}
+              >
+                {submitting ? "Processando..." : submitLabel}
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const tabs = isSecretaryView
     ? [{ id: "stock", label: "Estoque", icon: Boxes }]
@@ -487,7 +682,6 @@ export default function StockManagement({
                 "Cadastre o recebimento de medicamentos e mantenha o histórico da movimentação.",
                 "Registrar Entrada",
                 submitEntry,
-                "btn-primary",
               )}
             </div>
           )}
@@ -502,7 +696,6 @@ export default function StockManagement({
                 "Registre a entrega de medicamentos e atualize o estoque automaticamente.",
                 "Confirmar Saída",
                 submitExit,
-                "btn-primary bg-amber-600 hover:bg-amber-700",
               )}
             </div>
           )}

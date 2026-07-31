@@ -85,10 +85,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [refresh]);
 
   const signIn = async (email: string, password: string) => {
-    const r = await api.login({ email, password });
-    await setToken(r.access_token);
-    setUser(r.user);
-    try { await registerForPushNotificationsAsync(); } catch {}
+    try {
+      const r = await api.login({ email, password });
+      await setToken(r.access_token);
+      setUser(r.user);
+      try { await registerForPushNotificationsAsync(); } catch {}
+    } catch (e: any) {
+      if (e?.code === 'MUST_CHANGE_PASSWORD' || (e?.status === 403 && String(e?.message).includes('Troque a senha temporária'))) {
+        const error = new Error('MUST_CHANGE_PASSWORD');
+        (error as any).code = 'MUST_CHANGE_PASSWORD';
+        throw error;
+      }
+      throw e;
+    }
   };
 
   const signOut = async () => {

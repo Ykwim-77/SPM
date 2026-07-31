@@ -74,6 +74,7 @@ export default function Prontuario() {
       const { data } = await api.get(`/patients/${id}`);
       console.log("patient data", data);
       setP(data);
+      setPrescs(Array.isArray(data.prescriptions_history) ? data.prescriptions_history : []);
     } catch (e) {
       toast.error("Erro ao carregar paciente");
     }

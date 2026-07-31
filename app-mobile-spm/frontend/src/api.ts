@@ -196,7 +196,9 @@ function unpackApiResponse<T>(payload: any, status: number): T {
   }
   if (status >= 400) {
     const detail = payload?.detail || payload?.message || `Erro ${status}`;
-    throw Object.assign(new Error(typeof detail === 'string' ? detail : JSON.stringify(detail)), { status });
+    const message = typeof detail === 'string' ? detail : JSON.stringify(detail);
+    const code = payload?.code || (message.includes('Troque a senha temporária') ? 'MUST_CHANGE_PASSWORD' : undefined);
+    throw Object.assign(new Error(message), { code, status });
   }
   return payload as T;
 }
