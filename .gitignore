@@ -86,3 +86,7 @@ memory/test_credentials.md
 # Mobile development
 android-sdk/frontend/node_modules/.cache/default-development/4.pack
 frontend/node_modules/.cache/default-development/4.pack
+
+# Ignore SQLite WAL/SHM transients
+*.db-wal
+*.db-shm
