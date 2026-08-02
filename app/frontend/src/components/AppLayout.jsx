@@ -40,7 +40,7 @@ const navByRole = {
   secretario: [
     { to: "/secretario", label: "Indicadores", icon: BarChart3, end: true },
     { to: "/secretario/auditoria", label: "Auditoria", icon: ShieldCheck },
-    { to: "/secretario/feedbacks", label: "Feedbacks", icon: MessageSquare },
+    // { to: "/secretario/feedbacks", label: "Feedbacks", icon: MessageSquare },
     { to: "/secretario/estoque", label: "Estoque por Unidade", icon: Pill },
     {
       to: "/secretario/config-vagas",

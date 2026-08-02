@@ -101,6 +101,7 @@ const SPECIALTIES = [
   "Oftalmologia",
   "Endocrinologia",
 ];
+const cancelledStatuses = ["cancelado", "cancelled", "bloqueio_medico"];
 const api = express.Router();
 
 const toPatient = (p) => ({
@@ -572,7 +573,10 @@ api.get("/appointments", requireAuth, async (req, res) => {
   // outro hospital/postinho.
   if (req.user.role === "atendente" && req.user.unit) where.unit = req.user.unit;
   const appts = await prisma.appointment.findMany({
-    where,
+    where: {
+      ...where,
+      status: { notIn: cancelledStatuses },
+    },
     include: { patient: true },
     orderBy: { scheduledAt: "asc" },
   });
@@ -722,7 +726,7 @@ api.get("/queue/today", requireAuth, async (req, res) => {
   start.setHours(0, 0, 0, 0);
   const end = new Date(start);
   end.setDate(end.getDate() + 1);
-  const where = { scheduledAt: { gte: start, lt: end } };
+  const where = { scheduledAt: { gte: start, lt: end }, status: { notIn: cancelledStatuses } };
   if (req.user.role === "medico") where.doctorId = req.user.id;
   const appts = await prisma.appointment.findMany({
     where,
@@ -1373,9 +1377,31 @@ api.get("/vacancies/active", requireAuth, async (req, res) => {
   for (const v of vacs) {
     const remaining = Math.max(0, Math.floor((v.deadline - now) / 1000));
     if (remaining <= 0 && v.status === "waiting_response") {
-      await prisma.vacancy.update({
-        where: { id: v.id },
-        data: { status: "expired" },
+      await prisma.$transaction(async (tx) => {
+        await tx.vacancy.update({ where: { id: v.id }, data: { status: "expired" } });
+        await tx.waitingList.updateMany({
+          where: { patientId: v.patientId, specialty: v.specialty, status: "notified" },
+          data: { status: "expired" },
+        });
+        const next = await tx.waitingList.findFirst({
+          where: { specialty: v.specialty, status: "waiting" },
+          orderBy: { createdAt: "asc" },
+          include: { patient: true },
+        });
+        if (next) {
+          await tx.waitingList.update({ where: { id: next.id }, data: { status: "notified" } });
+          await tx.vacancy.create({
+            data: {
+              patientId: next.patientId,
+              patientName: next.patient.name,
+              specialty: next.specialty,
+              unit: v.unit,
+              notifiedAt: new Date(),
+              deadline: new Date(Date.now() + 1000 * 60 * 15),
+              status: "waiting_response",
+            },
+          });
+        }
       });
     } else
       out.push({

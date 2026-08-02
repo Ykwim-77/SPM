@@ -23,10 +23,14 @@ export default function VagasOciosas() {
   useEffect(() => {
     load();
   }, []);
+
   useEffect(() => {
+    const onFocus = () => load();
+    window.addEventListener("focus", onFocus);
     const t = setInterval(() => setTick((x) => x + 1), 1000);
-    const r = setInterval(load, 30000);
+    const r = setInterval(load, 15000);
     return () => {
+      window.removeEventListener("focus", onFocus);
       clearInterval(t);
       clearInterval(r);
     };

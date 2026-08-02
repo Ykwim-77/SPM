@@ -96,7 +96,7 @@ function App() {
                 element={<StockManagement mode="secretario" />}
               />
 
-              <Route path="/secretario/Feedbacks" element={<Feedbacks />} />
+              {/* <Route path="/secretario/Feedbacks" element={<Feedbacks />} /> */}
             </Route>
 
             {/* Configuração de vagas online x presencial: acessível apenas pelo Secretário */}

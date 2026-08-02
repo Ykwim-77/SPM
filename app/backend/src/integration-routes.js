@@ -40,6 +40,7 @@ function requireInternalService(req, res, next) {
 }
 
 const cancelledStatuses = ["cancelado", "cancelled", "bloqueio_medico"];
+const VACANCY_RESPONSE_WINDOW_MS = 1000 * 60 * 15;
 
 const localDayRange = (date) => {
   const start = new Date(date);
@@ -48,6 +49,47 @@ const localDayRange = (date) => {
   end.setDate(end.getDate() + 1);
   return { start, end };
 };
+
+async function createVacancyForNextPatient(tx, specialty, unit) {
+  const activeVacancy = await tx.vacancy.findFirst({
+    where: {
+      specialty,
+      unit,
+      status: "waiting_response",
+      deadline: { gt: new Date() },
+    },
+  });
+  if (activeVacancy) return null;
+
+  const nextWaiting = await tx.waitingList.findFirst({
+    where: { specialty, status: "waiting" },
+    orderBy: { createdAt: "asc" },
+    include: { patient: true },
+  });
+  if (!nextWaiting) return null;
+
+  await tx.waitingList.update({
+    where: { id: nextWaiting.id },
+    data: { status: "notified" },
+  });
+
+  return tx.vacancy.create({
+    data: {
+      patientId: nextWaiting.patientId,
+      patientName: nextWaiting.patient.name,
+      specialty,
+      unit,
+      notifiedAt: new Date(),
+      deadline: new Date(Date.now() + VACANCY_RESPONSE_WINDOW_MS),
+      status: "waiting_response",
+    },
+  });
+}
+
+async function expireAndCascadeVacancy(tx, vacancy) {
+  await tx.vacancy.update({ where: { id: vacancy.id }, data: { status: "expired" } });
+  return createVacancyForNextPatient(tx, vacancy.specialty, vacancy.unit);
+}
 
 async function selectDoctor(tx, { doctorId, specialty, unit, scheduledAt }) {
   if (doctorId) {
@@ -244,10 +286,14 @@ router.post("/appointments/cancel", async (req, res) => {
       });
       if (!found) return null;
       if (cancelledStatuses.includes(found.status)) return found;
-      return tx.appointment.update({
+
+      const updated = await tx.appointment.update({
         where: { id: found.id },
         data: { status: "cancelado", justification: reason.trim() },
       });
+
+      await createVacancyForNextPatient(tx, found.specialty, found.unit);
+      return updated;
     },
     { maxWait: 5000, timeout: 10000 },
   );
@@ -284,19 +330,103 @@ router.get("/waiting-list/position", async (req, res) => {
   return success(res, { position, waiting: true });
 });
 
+router.post("/waiting-list/join", async (req, res) => {
+  const { patientId, specialty } = req.body || {};
+  if (!patientId || !specialty?.trim())
+    return failure(res, "VALIDATION_ERROR", "Paciente e especialidade são obrigatórios.", 422);
+
+  const patient = await prisma.patient.findUnique({ where: { id: patientId } });
+  if (!patient) return failure(res, "NOT_FOUND", "Paciente não encontrado.", 404);
+
+  const existing = await prisma.waitingList.findFirst({
+    where: {
+      patientId,
+      specialty: specialty.trim(),
+      status: { in: ["waiting", "notified"] },
+    },
+  });
+  if (existing)
+    return failure(
+      res,
+      "VALIDATION_ERROR",
+      "Paciente já está na fila de espera para essa especialidade.",
+      409,
+    );
+
+  const entry = await prisma.waitingList.create({
+    data: { patientId, specialty: specialty.trim(), status: "waiting" },
+  });
+  const position =
+    (await prisma.waitingList.count({
+      where: {
+        specialty: entry.specialty,
+        status: "waiting",
+        createdAt: { lt: entry.createdAt },
+      },
+    })) + 1;
+
+  return success(res, {
+    id: entry.id,
+    patient_id: entry.patientId,
+    specialty: entry.specialty,
+    position,
+  });
+});
+
 router.post("/waiting-list/respond", async (req, res) => {
   const { vacancyId, patientId, accepted } = req.body || {};
-  const vacancy = await prisma.vacancy.findFirst({ where: { id: vacancyId, patientId } });
-  if (!vacancy) return failure(res, "NOT_FOUND", "Oferta de vaga não encontrada.", 404);
-  if (vacancy.deadline <= new Date()) {
-    await prisma.vacancy.update({ where: { id: vacancy.id }, data: { status: "expired" } });
-    return failure(res, "VALIDATION_ERROR", "O prazo para responder à vaga expirou.", 409);
+  if (!vacancyId || !patientId || typeof accepted !== "boolean")
+    return failure(
+      res,
+      "VALIDATION_ERROR",
+      "VacancyId, patientId e accepted são obrigatórios.",
+      422,
+    );
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const vacancy = await tx.vacancy.findFirst({ where: { id: vacancyId, patientId } });
+      if (!vacancy) return null;
+      if (vacancy.deadline <= new Date()) {
+        await tx.vacancy.update({ where: { id: vacancy.id }, data: { status: "expired" } });
+        await tx.waitingList.updateMany({
+          where: { patientId, specialty: vacancy.specialty, status: "notified" },
+          data: { status: "expired" },
+        });
+        await createVacancyForNextPatient(tx, vacancy.specialty, vacancy.unit);
+        const error = new Error("O prazo para responder à vaga expirou.");
+        error.code = "EXPIRED";
+        throw error;
+      }
+      if (vacancy.status !== "waiting_response") {
+        const error = new Error("A vaga não está disponível para resposta.");
+        error.code = "UNAVAILABLE";
+        throw error;
+      }
+
+      const updated = await tx.vacancy.update({
+        where: { id: vacancy.id },
+        data: { status: accepted ? "accepted" : "declined" },
+      });
+      await tx.waitingList.updateMany({
+        where: { patientId, specialty: vacancy.specialty, status: "notified" },
+        data: { status: accepted ? "accepted" : "declined" },
+      });
+      if (!accepted) {
+        await createVacancyForNextPatient(tx, vacancy.specialty, vacancy.unit);
+      }
+      return updated;
+    }, { maxWait: 5000, timeout: 10000 });
+
+    if (!result) return failure(res, "NOT_FOUND", "Oferta de vaga não encontrada.", 404);
+    return success(res, result);
+  } catch (error) {
+    if (error.code === "EXPIRED")
+      return failure(res, "VALIDATION_ERROR", error.message, 409);
+    if (error.code === "UNAVAILABLE")
+      return failure(res, "VALIDATION_ERROR", error.message, 409);
+    throw error;
   }
-  const updated = await prisma.vacancy.update({
-    where: { id: vacancy.id },
-    data: { status: accepted ? "accepted" : "declined" },
-  });
-  return success(res, updated);
 });
 
 export default router;
