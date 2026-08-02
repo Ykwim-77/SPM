@@ -107,7 +107,7 @@ const CANDIDATE_URLS = (() => {
 
 async function resolveBaseUrl(): Promise<string> {
   await loadCachedBaseUrl();
-  if (cachedBaseUrl) return cachedBaseUrl;
+  if (cachedBaseUrl && !EXPO_BACKEND_URL_RAW) return cachedBaseUrl;
   if (resolveBaseUrlPromise) return resolveBaseUrlPromise;
 
   resolveBaseUrlPromise = (async () => {
