@@ -49,8 +49,7 @@ export default function BookAppointment() {
     if (!time) return;
     setSubmitting(true);
     try {
-      const [h, m] = time.split(':').map(Number);
-      const scheduledAt = dayjs(selectedDate).hour(h).minute(m).second(0).toISOString();
+      const scheduledAt = new Date(`${selectedDate}T${time}:00`).toISOString();
       await api.createAppointment({
         doctor_name: 'UPA',
         specialty: 'UPA',

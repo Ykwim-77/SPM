@@ -22,6 +22,13 @@ function toLocalDateKey(d) {
   return `${y}-${m}-${day}`;
 }
 
+function formatLocalTime(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+}
+
 function generateTemporaryPassword(length = 12) {
   const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+-=[]{}|;:,.<>?";
   let result = "";
@@ -500,7 +507,7 @@ export default function AtendenteDashboard() {
                     ?.toLowerCase()
                     .includes(filterName.toLowerCase());
 
-                const apptTime = a.scheduled_at?.slice(11, 16); // Recorta "HH:MM" da string ISO
+                const apptTime = formatLocalTime(a.scheduled_at);
                 const matchesStart =
                   !filterStartTime || apptTime >= filterStartTime;
                 const matchesEnd = !filterEndTime || apptTime <= filterEndTime;
@@ -510,8 +517,8 @@ export default function AtendenteDashboard() {
 
               // 2. Ordena os resultados filtrados baseando-se no botão (Crescente ou Decrescente)
               const sortedAppts = [...filteredAppts].sort((a, b) => {
-                const timeA = a.scheduled_at?.slice(11, 16) || "";
-                const timeB = b.scheduled_at?.slice(11, 16) || "";
+                const timeA = formatLocalTime(a.scheduled_at) || "";
+                const timeB = formatLocalTime(b.scheduled_at) || "";
                 return sortOrder === "asc"
                   ? timeA.localeCompare(timeB)
                   : timeB.localeCompare(timeA);
@@ -544,7 +551,7 @@ export default function AtendenteDashboard() {
                   </div>
                   <div className="text-right">
                     <div className="font-mono-nums font-bold text-[#1D3557]">
-                      {a.scheduled_at?.slice(11, 16)}
+                      {formatLocalTime(a.scheduled_at)}
                     </div>
                     <div className="text-xs capitalize text-slate-500">
                       {a.status}

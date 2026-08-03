@@ -3,11 +3,13 @@ import { useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 import AccessiblePressable from '@/src/components/AccessiblePressable';
 import { api } from '@/src/api';
+import { useAuth } from '@/src/auth';
 import { colors, font, radius, spacing } from '@/src/theme';
 
 export default function ChangePassword() {
   const router = useRouter();
   const { email = '' } = useLocalSearchParams<{ email?: string }>();
+  const { signIn } = useAuth();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -21,7 +23,8 @@ export default function ChangePassword() {
     setLoading(true);
     try {
       await api.changePassword({ email: String(email), currentPassword, newPassword });
-      router.replace('/(auth)/login');
+      await signIn(String(email).trim(), newPassword);
+      router.replace('/(tabs)/home');
     } catch (e: any) {
       setError(e?.message || 'Não foi possível trocar a senha.');
     } finally {

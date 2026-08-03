@@ -74,7 +74,7 @@ export default function EditAppointment() {
     setError(null);
     setSaving(true);
     try {
-      const scheduledAt = dayjs(`${selectedDate}T${time}`).second(0).toISOString();
+      const scheduledAt = new Date(`${selectedDate}T${time}:00`).toISOString();
       await api.updateAppointment(id!, {
         doctor_name: doctor,
         specialty: specialty.key,

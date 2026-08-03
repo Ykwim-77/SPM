@@ -131,7 +131,10 @@ export default function MedicoDashboard() {
                     <div className="text-xs text-slate-500">{a.patient?.cpf}</div>
                   </td>
                   <td className="px-6 py-4 font-mono-nums text-slate-700">
-                    {a.scheduled_at?.slice(11, 16)}
+                    {new Date(a.scheduled_at).toLocaleTimeString("pt-BR", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
                   </td>
                   <td className={`px-6 py-4 font-semibold capitalize ${statusStyle[a.status]}`}>
                     {a.status === "bloqueio_medico" ? "Cancelada (bloqueio)" : a.status}

@@ -91,8 +91,9 @@ export default function Home() {
 
         <Text style={styles.section}>Atalhos</Text>
         <View style={styles.grid}>
-          <Tile testID="tile-appointments" icon="calendar" label="Consultas" color={colors.brandPrimary}
-            onPress={() => router.push('/(tabs)/appointments')} />
+          <Tile testID="tile-appointments" icon="calendar" label="Consultas"
+            badge={data?.upcoming_count ? String(data.upcoming_count) : undefined}
+            color={colors.brandPrimary} onPress={() => router.push('/(tabs)/appointments')} />
           <Tile testID="tile-documents" icon="document-text" label="Exames"
             badge={data?.exams_ready ? `${data.exams_ready} pronto${data.exams_ready > 1 ? 's' : ''}` : undefined}
             color={colors.brandSecondary} onPress={() => router.push('/(tabs)/documents')} />
