@@ -193,9 +193,9 @@ async function createOrRescheduleAppointment(payload) {
         throw error;
       }
 
-      const unit = payload.unit || "UBS Central";
+      const requestedUnit = payload.unit || "UBS Central";
       const specialty = payload.specialty || "Clínica Geral";
-      const doctor = await selectDoctor(tx, { ...payload, specialty, unit, scheduledAt });
+      const doctor = await selectDoctor(tx, { ...payload, specialty, unit: requestedUnit, scheduledAt });
       console.log("[integration] selected doctor", doctor?.id, doctor?.name, doctor?.specialty);
       if (!doctor) {
         const error = new Error("NOT_FOUND");
@@ -204,6 +204,7 @@ async function createOrRescheduleAppointment(payload) {
         throw error;
       }
 
+      const unit = doctor.unit || requestedUnit;
       await assertOnlineCapacity(tx, unit, scheduledAt);
       const taken = await tx.appointment.findFirst({
         where: {

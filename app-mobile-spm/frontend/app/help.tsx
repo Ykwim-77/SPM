@@ -20,6 +20,33 @@ export default function Help() {
     })();
   }, []);
 
+  const helpOptions = [
+    {
+      label: 'Ligar para Disque Saúde 136',
+      icon: 'call',
+      onPress: () => Linking.openURL('tel:136'),
+      testID: 'help-option-call',
+    },
+    {
+      label: 'Enviar e-mail para suporte',
+      icon: 'mail',
+      onPress: () => Linking.openURL('mailto:suporte@saudepalma.com.br?subject=Ajuda%20App'),
+      testID: 'help-option-email',
+    },
+    {
+      label: 'Visitar site de ajuda',
+      icon: 'language',
+      onPress: () => Linking.openURL('https://www.gov.br/saude/pt-br'),
+      testID: 'help-option-site',
+    },
+    {
+      label: 'Abrir central de ajuda',
+      icon: 'book',
+      onPress: () => Linking.openURL('https://www.gov.br/saude/pt-br'),
+      testID: 'help-option-guide',
+    },
+  ];
+
   return (
     <SafeAreaView style={styles.wrap} edges={['top']}>
       <View style={styles.header}>
@@ -53,11 +80,30 @@ export default function Help() {
           ))
         )}
 
+        <View style={styles.helpOptions}>
+          {helpOptions.map((option) => (
+            <AccessiblePressable
+              key={option.testID}
+              style={styles.optionBtn}
+              onPress={option.onPress}
+              testID={option.testID}
+              label={option.label}
+            >
+              <Ionicons name={option.icon as any} size={20} color={colors.brandPrimary} />
+              <Text style={styles.optionBtnTxt}>{option.label}</Text>
+            </AccessiblePressable>
+          ))}
+        </View>
+
         <View style={styles.contact}>
           <Text style={styles.contactTitle}>Ainda precisa de ajuda?</Text>
           <AccessiblePressable style={styles.contactBtn} onPress={() => Linking.openURL('tel:136')} testID="call-sus" label="Ligar para Disque Saúde 136">
             <Ionicons name="call" size={20} color="#fff" />
             <Text style={styles.contactBtnTxt}>Ligar para Disque Saúde 136</Text>
+          </AccessiblePressable>
+          <AccessiblePressable style={styles.callOptionBtn} onPress={() => Linking.openURL('sms:136')} testID="sms-sus" label="Enviar SMS para Disque Saúde 136">
+            <Ionicons name="chatbubble-ellipses" size={20} color="#fff" />
+            <Text style={styles.callOptionBtnTxt}>Enviar SMS para 136</Text>
           </AccessiblePressable>
           <Text style={styles.contactSub}>Atendimento gratuito 24h — Ministério da Saúde</Text>
         </View>
@@ -85,4 +131,9 @@ const styles = StyleSheet.create({
   contactBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.brandSecondary, paddingHorizontal: 20, paddingVertical: 14, borderRadius: radius.pill, minHeight: 48 },
   contactBtnTxt: { color: '#fff', fontWeight: '700', fontSize: font.base },
   contactSub: { color: 'rgba(255,255,255,0.85)', fontSize: font.sm, marginTop: spacing.md, textAlign: 'center' },
+  callOptionBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(255,255,255,0.16)', paddingHorizontal: 18, paddingVertical: 12, borderRadius: radius.pill, marginTop: spacing.sm },
+  callOptionBtnTxt: { color: '#fff', fontWeight: '700', fontSize: font.base },
+  helpOptions: { marginTop: spacing.lg },
+  optionBtn: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#fff', padding: spacing.md, borderRadius: radius.md, marginBottom: spacing.sm, borderWidth: 1, borderColor: colors.border },
+  optionBtnTxt: { fontSize: font.base, color: colors.onSurface, fontWeight: '600' },
 });

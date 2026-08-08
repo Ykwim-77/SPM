@@ -5,6 +5,7 @@ import {
   Users,
   Search,
   Plus,
+  Pencil,
   Lock,
   LockOpen,
   AlertTriangle,
@@ -49,6 +50,29 @@ export default function AtendenteDashboard() {
   const [patientQuery, setPatientQuery] = useState("");
   const [showApptForm, setShowApptForm] = useState(false);
   const [showPatientForm, setShowPatientForm] = useState(false);
+  const [showEditPatientForm, setShowEditPatientForm] = useState(false);
+  const [editingPatient, setEditingPatient] = useState(null);
+  const [editPatientValues, setEditPatientValues] = useState({
+    name: "",
+    cpf: "",
+    email: "",
+    birth_date: "2000-01-01",
+    phone: "",
+    address: "",
+    sex: "",
+    mother_name: "",
+    father_name: "",
+    sus_card: "",
+    cep: "",
+    city_state: "",
+    nearest_unit: "",
+    emergency_contact_name: "",
+    emergency_contact_phone: "",
+    substance_use: "",
+    allergies: "",
+    chronic_conditions: "",
+    lgpd_accepted: true,
+  });
   const [showLockModal, setShowLockModal] = useState(false);
   const [selectedDoctorForLock, setSelectedDoctorForLock] = useState(null);
   const [lockingInProgress, setLockingInProgress] = useState(false);
@@ -204,6 +228,53 @@ export default function AtendenteDashboard() {
       });
     } catch (e) {
       const detail = e?.response?.data?.error?.message || e?.response?.data?.detail || "Erro ao cadastrar";
+      toast.error(detail);
+    }
+  };
+
+  const updateEditPatient = (field, value) =>
+    setEditPatientValues((prev) => ({ ...prev, [field]: value }));
+
+  const openEditPatientForm = (patient) => {
+    setEditingPatient(patient);
+    setEditPatientValues({
+      name: patient.name || "",
+      cpf: patient.cpf || "",
+      email: patient.email || "",
+      birth_date: patient.birth_date ? String(patient.birth_date).slice(0, 10) : "2000-01-01",
+      phone: patient.phone || "",
+      address: patient.address || "",
+      sex: patient.sex || "",
+      mother_name: patient.mother_name || "",
+      father_name: patient.father_name || "",
+      sus_card: patient.sus_card || "",
+      cep: patient.cep || "",
+      city_state: patient.city_state || "",
+      nearest_unit: patient.nearest_unit || "",
+      emergency_contact_name: patient.emergency_contact_name || "",
+      emergency_contact_phone: patient.emergency_contact_phone || "",
+      substance_use: patient.substance_use || "",
+      allergies: patient.allergies || "",
+      chronic_conditions: patient.chronic_conditions || "",
+      lgpd_accepted: !!patient.lgpd_accepted,
+    });
+    setShowEditPatientForm(true);
+  };
+
+  const closeEditPatientForm = () => {
+    setShowEditPatientForm(false);
+    setEditingPatient(null);
+  };
+
+  const updatePatient = async () => {
+    if (!editingPatient) return;
+    try {
+      await api.put(`/patients/${editingPatient.id}`, editPatientValues);
+      toast.success("Dados do paciente atualizados");
+      closeEditPatientForm();
+      load();
+    } catch (e) {
+      const detail = e?.response?.data?.error?.message || e?.response?.data?.detail || "Erro ao atualizar";
       toast.error(detail);
     }
   };
@@ -438,11 +509,24 @@ export default function AtendenteDashboard() {
                     {p.cpf} · {p.phone}
                   </div>
                 </div>
-                {p.blocked_online && (
-                  <span className="text-[10px] bg-[#E76F51]/10 text-[#E76F51] px-2 py-1 rounded font-bold">
-                    BLOQUEADO
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openEditPatientForm(p);
+                    }}
+                    className="p-2 rounded hover:bg-slate-100 text-slate-500 hover:text-slate-700"
+                    aria-label={`Editar paciente ${p.name}`}
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                  {p.blocked_online && (
+                    <span className="text-[10px] bg-[#E76F51]/10 text-[#E76F51] px-2 py-1 rounded font-bold">
+                      BLOQUEADO
+                    </span>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -919,6 +1003,182 @@ export default function AtendenteDashboard() {
               className="btn-primary disabled:opacity-50"
             >
               Cadastrar
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {showEditPatientForm && editingPatient && (
+        <Modal title="Editar Paciente" onClose={closeEditPatientForm}>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Nome completo">
+              <input
+                value={editPatientValues.name}
+                onChange={(e) => updateEditPatient("name", e.target.value)}
+                className="inp"
+              />
+            </Field>
+            <Field label="Sexo">
+              <select
+                value={editPatientValues.sex}
+                onChange={(e) => updateEditPatient("sex", e.target.value)}
+                className="inp"
+              >
+                <option value="">Selecione</option>
+                <option value="masculino">Masculino</option>
+                <option value="feminino">Feminino</option>
+              </select>
+            </Field>
+            <Field label="CPF (fixo)">
+              <input
+                value={editPatientValues.cpf}
+                disabled
+                className="inp bg-slate-100 cursor-not-allowed"
+              />
+            </Field>
+            <Field label="E-mail para login no app mobile">
+              <input
+                type="email"
+                value={editPatientValues.email}
+                onChange={(e) => updateEditPatient("email", e.target.value)}
+                className="inp"
+                placeholder="paciente@exemplo.com"
+              />
+            </Field>
+            <Field label="Cartão Nacional de Saúde (SUS)">
+              <input
+                value={editPatientValues.sus_card}
+                onChange={(e) => updateEditPatient("sus_card", e.target.value)}
+                className="inp"
+                placeholder="Somente números (ex. 123456789012345)"
+              />
+            </Field>
+            <Field label="Nascimento">
+              <input
+                type="date"
+                value={editPatientValues.birth_date}
+                onChange={(e) => updateEditPatient("birth_date", e.target.value)}
+                className="inp"
+              />
+            </Field>
+            <Field label="Telefone/Celular">
+              <input
+                value={editPatientValues.phone}
+                onChange={(e) => updateEditPatient("phone", e.target.value)}
+                className="inp"
+                placeholder="(99) 99999-9999"
+              />
+            </Field>
+            <Field label="Nome da mãe">
+              <input
+                value={editPatientValues.mother_name}
+                onChange={(e) => updateEditPatient("mother_name", e.target.value)}
+                className="inp"
+              />
+            </Field>
+            <Field label="Nome do pai">
+              <input
+                value={editPatientValues.father_name}
+                onChange={(e) => updateEditPatient("father_name", e.target.value)}
+                className="inp"
+              />
+            </Field>
+            <Field label="CEP">
+              <input
+                value={editPatientValues.cep}
+                onChange={(e) => updateEditPatient("cep", e.target.value)}
+                className="inp"
+                placeholder="Somente números (ex. 12345678)"
+              />
+            </Field>
+            <Field label="Endereço residencial">
+              <input
+                value={editPatientValues.address}
+                onChange={(e) => updateEditPatient("address", e.target.value)}
+                className="inp"
+                placeholder="Rua, Nº, Bairro"
+              />
+            </Field>
+            <Field label="Cidade/UF">
+              <input
+                value={editPatientValues.city_state}
+                onChange={(e) => updateEditPatient("city_state", e.target.value)}
+                className="inp"
+                placeholder="Cidade / UF"
+              />
+            </Field>
+            <Field label="Unidade de saúde mais próxima">
+              <input
+                value={editPatientValues.nearest_unit}
+                onChange={(e) => updateEditPatient("nearest_unit", e.target.value)}
+                className="inp"
+                placeholder="Preencher com a unidade mais próxima"
+              />
+            </Field>
+            <Field label="Nome do contato de emergência">
+              <input
+                value={editPatientValues.emergency_contact_name}
+                onChange={(e) => updateEditPatient("emergency_contact_name", e.target.value)}
+                className="inp"
+              />
+            </Field>
+            <Field label="Telefone do contato de emergência">
+              <input
+                value={editPatientValues.emergency_contact_phone}
+                onChange={(e) => updateEditPatient("emergency_contact_phone", e.target.value)}
+                className="inp"
+                placeholder="(99) 99999-9999"
+              />
+            </Field>
+            <div className="col-span-2">
+              <Field label="Uso de substâncias">
+                <textarea
+                  value={editPatientValues.substance_use}
+                  onChange={(e) => updateEditPatient("substance_use", e.target.value)}
+                  className="inp h-24 resize-none"
+                />
+              </Field>
+            </div>
+            <div className="col-span-2">
+              <Field label="Alergias">
+                <textarea
+                  value={editPatientValues.allergies}
+                  onChange={(e) => updateEditPatient("allergies", e.target.value)}
+                  className="inp h-24 resize-none"
+                />
+              </Field>
+            </div>
+            <div className="col-span-2">
+              <Field label="Doenças crônicas">
+                <textarea
+                  value={editPatientValues.chronic_conditions}
+                  onChange={(e) => updateEditPatient("chronic_conditions", e.target.value)}
+                  className="inp h-24 resize-none"
+                />
+              </Field>
+            </div>
+            <label className="col-span-2 flex items-center gap-2 text-sm text-slate-600">
+              <input
+                type="checkbox"
+                checked={editPatientValues.lgpd_accepted}
+                onChange={(e) => updateEditPatient("lgpd_accepted", e.target.checked)}
+              />
+              Paciente aceitou os Termos de Uso (LGPD)
+            </label>
+          </div>
+          <div className="flex justify-end gap-2 mt-6">
+            <button
+              onClick={closeEditPatientForm}
+              className="btn-secondary"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={updatePatient}
+              disabled={!editPatientValues.name || !editPatientValues.email}
+              className="btn-primary disabled:opacity-50"
+            >
+              Salvar alterações
             </button>
           </div>
         </Modal>

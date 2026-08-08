@@ -8,7 +8,6 @@ import {
   Pill,
   FlaskConical,
   Lock,
-  Clock,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -65,7 +64,8 @@ export default function Prontuario() {
   const [pickedExams, setPickedExams] = useState([]);
   const [examQuery, setExamQuery] = useState("");
   const [prep, setPrep] = useState("");
-  const [busyAdherenceId, setBusyAdherenceId] = useState(null);
+  const [showEditNotes, setShowEditNotes] = useState(false);
+  const [notes, setNotes] = useState({ allergies: "", chronic_conditions: "" });
   const [examType, setExamType] = useState("externo");
   const nav = useNavigate();
 
@@ -75,6 +75,10 @@ export default function Prontuario() {
       console.log("patient data", data);
       setP(data);
       setPrescs(Array.isArray(data.prescriptions_history) ? data.prescriptions_history : []);
+      setNotes({
+        allergies: data.allergies || "",
+        chronic_conditions: data.chronic_conditions || "",
+      });
     } catch (e) {
       toast.error("Erro ao carregar paciente");
     }
@@ -84,27 +88,47 @@ export default function Prontuario() {
     setSigtap(data);
   };
 
+  const updateNotes = (field, value) =>
+    setNotes((prev) => ({ ...prev, [field]: value }));
+
+  const savePatientNotes = async () => {
+    try {
+      await api.put(`/patients/${id}`, {
+        allergies: notes.allergies,
+        chronic_conditions: notes.chronic_conditions,
+      });
+      toast.success("Alergias e doenças crônicas atualizadas");
+      setShowEditNotes(false);
+      loadPatient();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Erro ao salvar alterações");
+    }
+  };
+
   useEffect(() => {
     loadPatient();
     loadRefs();
   }, [id]);
 
-  const startConsult = async () => {
-    if (!apptId) return;
+  const confirmPresence = async () => {
+    if (!apptId) {
+      toast.error("Não há consulta válida para confirmar presença.");
+      return;
+    }
     try {
-      const { data: appt } = await api.get(`/appointments/${apptId}`);
-      if (appt.status !== "aguardando") return;
-      await api.patch(`/appointments/${apptId}`, { status: "compareceu" });
-      toast.success("Presença registrada");
+      const { data } = await api.patch(`/appointments/${apptId}`, { status: "compareceu" });
+      if (data?.already_attended) {
+        toast.success("Presença já estava registrada");
+      } else {
+        toast.success("Presença registrada");
+      }
+      loadPatient();
     } catch (e) {
       const msg = e?.response?.data?.detail;
       if (msg) toast.error(msg);
+      else toast.error("Erro ao confirmar presença");
     }
   };
-
-  useEffect(() => {
-    if (apptId) startConsult();
-  }, [apptId]);
 
   const savePrescription = async () => {
     if (!form.active_substance?.trim()) {
@@ -175,27 +199,6 @@ export default function Prontuario() {
     }
   };
 
-  const confirmMedicationDose = async (prescriptionId) => {
-    setBusyAdherenceId(prescriptionId);
-    try {
-      const { data } = await api.post(
-        `/prescriptions/${prescriptionId}/adherence`,
-        { status: "taken", note: "Tomada confirmada no sistema" },
-      );
-      setPrescs((prev) =>
-        prev.map((item) =>
-          item.id === prescriptionId
-            ? { ...item, adherence_logs: data.adherence_logs }
-            : item,
-        ),
-      );
-      toast.success("Tomada registrada");
-    } catch {
-      toast.error("Erro ao registrar tomada");
-    } finally {
-      setBusyAdherenceId(null);
-    }
-  };
 
   const getAdherenceStats = (rx) => {
     const logs = Array.isArray(rx.adherence_logs) ? rx.adherence_logs : [];
@@ -236,7 +239,7 @@ export default function Prontuario() {
               </div>
             )}
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
               <button
                 data-testid="new-prescription-btn"
                 onClick={() => setShowForm(true)}
@@ -244,6 +247,15 @@ export default function Prontuario() {
               >
                 <Pill className="w-4 h-4 inline mr-1" /> Nova Receita
               </button>
+              {apptId && (
+                <button
+                  data-testid="confirm-presence-btn"
+                  onClick={confirmPresence}
+                  className="bg-[#2A9D8F] text-white px-4 py-2 rounded-md font-semibold text-sm"
+                >
+                  <CheckCircle2 className="w-4 h-4 inline mr-1" /> Confirmar Presença
+                </button>
+              )}
               <button
                 data-testid="request-exam-btn"
                 onClick={() => setShowExam(true)}
@@ -305,15 +317,70 @@ export default function Prontuario() {
             <div className="font-semibold text-slate-600">Uso de substâncias</div>
             <div>{p.substance_use || "—"}</div>
           </div>
-          <div className="md:col-span-2">
-            <div className="font-semibold text-slate-600">Alergias</div>
-            <div>{p.allergies || "—"}</div>
-          </div>
-          <div className="md:col-span-2">
-            <div className="font-semibold text-slate-600">Doenças crônicas</div>
-            <div>{p.chronic_conditions || "—"}</div>
-          </div>
         </div>
+      </div>
+
+      <div className="sc-card mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-display font-bold text-lg text-[#1D3557]">
+            Alergias e Doenças Crônicas
+          </h2>
+          <button
+            type="button"
+            onClick={() => setShowEditNotes((prev) => !prev)}
+            className="text-sm px-3 py-2 border border-slate-200 rounded-md bg-white text-[#1D3557] hover:bg-slate-50"
+          >
+            {showEditNotes ? "Cancelar" : "Editar"}
+          </button>
+        </div>
+        {showEditNotes ? (
+          <div className="grid grid-cols-1 gap-4 text-sm">
+            <Field label="Alergias">
+              <textarea
+                value={notes.allergies}
+                onChange={(e) => updateNotes("allergies", e.target.value)}
+                className="inp h-24 resize-none"
+              />
+            </Field>
+            <Field label="Doenças crônicas">
+              <textarea
+                value={notes.chronic_conditions}
+                onChange={(e) => updateNotes("chronic_conditions", e.target.value)}
+                className="inp h-24 resize-none"
+              />
+            </Field>
+            <div className="text-xs text-slate-500">
+              Informe alergias e doenças crônicas conforme necessário.
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowEditNotes(false)}
+                className="btn-secondary"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={savePatientNotes}
+                className="btn-primary"
+              >
+                Salvar alterações
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 text-sm text-slate-700">
+            <div>
+              <div className="font-semibold text-slate-600">Alergias</div>
+              <div>{p.allergies || "—"}</div>
+            </div>
+            <div>
+              <div className="font-semibold text-slate-600">Doenças crônicas</div>
+              <div>{p.chronic_conditions || "—"}</div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* LGPD gate */}
@@ -358,7 +425,7 @@ export default function Prontuario() {
                         Prescrito por {r.doctor_name} · {r.validation_code}
                       </div>
                     </div>
-                    <div className="text-right flex flex-col gap-2">
+                    <div className="text-right">
                       <div>
                         <div className="text-xs overline">
                           Adesão (últimos 7 dias)
@@ -371,15 +438,6 @@ export default function Prontuario() {
                           {stats.percent}% confirmada
                         </div>
                       </div>
-                      <button
-                        onClick={() => confirmMedicationDose(r.id)}
-                        disabled={busyAdherenceId === r.id}
-                        className="text-xs px-3 py-1.5 rounded-md bg-[#1D3557] text-white font-semibold hover:bg-[#152742] disabled:opacity-50"
-                      >
-                        {busyAdherenceId === r.id
-                          ? "Salvando..."
-                          : "Registrar tomada"}
-                      </button>
                     </div>
                   </div>
                 );

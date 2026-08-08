@@ -482,6 +482,418 @@ async function main() {
     },
   });
 
+  // --- Additional demo data for dashboard / secretary metrics ---
+  // Create health units
+  const units = [
+    { id: 'unit-ubs-centro', name: 'UBS Centro' },
+    { id: 'unit-ubs-norte', name: 'UBS Norte' },
+    { id: 'unit-policlinica-sul', name: 'Policlínica Sul' },
+  ];
+
+  for (const u of units) {
+    await prisma.healthUnit.upsert({
+      where: { id: u.id },
+      update: { name: u.name },
+      create: { id: u.id, name: u.name },
+    });
+  }
+
+  // Create medicine master list via stock transactions and stocks
+  const medicines = [
+    { id: 'med-losartana', name: 'Losartana' },
+    { id: 'med-metformina', name: 'Metformina' },
+    { id: 'med-omeprazol', name: 'Omeprazol' },
+  ];
+
+  // Seed stocks and initial transactions
+  for (const u of units) {
+    for (const m of medicines) {
+      const stockId = `${u.id}-${m.id}`;
+      await prisma.medicineStock.upsert({
+        where: { id: stockId },
+        update: { quantity: 200 },
+        create: { id: stockId, healthUnitId: u.id, medicineId: m.id, quantity: 200 },
+      });
+
+      const detailsObj = { note: 'Recebimento inicial para demonstração', source: 'seed' };
+      await prisma.stockTransaction.upsert({
+        where: { id: `${stockId}-tx-initial` },
+        update: {
+          healthUnitId: u.id,
+          medicineId: m.id,
+          medicineName: m.name,
+          medicineDetails: JSON.stringify(detailsObj),
+          userId: attendant.id,
+          type: 'ENTRY',
+          quantity: 200,
+          createdAt: addDays(today, -30),
+        },
+        create: {
+          id: `${stockId}-tx-initial`,
+          healthUnitId: u.id,
+          medicineId: m.id,
+          medicineName: m.name,
+          medicineDetails: JSON.stringify(detailsObj),
+          userId: attendant.id,
+          type: 'ENTRY',
+          quantity: 200,
+          createdAt: addDays(today, -30),
+        },
+      });
+    }
+  }
+
+  // Create a small cohort of demo patients to populate dashboard stats
+  const extraPatients = [];
+  for (let i = 1; i <= 10; i++) {
+    const cpf = `100.000.00${String(i).padStart(2, '0')}-0${i}`;
+    const email = `paciente${i}@saudepalma.com.br`;
+    const p = await prisma.patient.upsert({
+      where: { cpf },
+      update: {
+        name: `Paciente Demo ${i}`,
+        email,
+        phone: `(46) 9${90000000 + i}`,
+        birthDate: addDays(today, -10000 - i),
+        nearestUnit: units[i % units.length].name,
+        chronicConditions: i % 2 === 0 ? 'Diabetes' : 'Hipertensão',
+        allergies: i % 3 === 0 ? 'Aspirina' : 'Nenhuma',
+        updatedAt: new Date(),
+      },
+      create: {
+        cpf,
+        name: `Paciente Demo ${i}`,
+        email,
+        phone: `(46) 9${90000000 + i}`,
+        birthDate: addDays(today, -10000 - i),
+        nearestUnit: units[i % units.length].name,
+        chronicConditions: i % 2 === 0 ? 'Diabetes' : 'Hipertensão',
+        allergies: i % 3 === 0 ? 'Aspirina' : 'Nenhuma',
+        lgpdAccepted: true,
+      },
+    });
+    extraPatients.push(p);
+
+    // create userAuth for some patients for dashboard counts
+    await prisma.userAuth.upsert({
+      where: { email },
+      update: { passwordHash: await bcrypt.hash('senha123', 10), role: 'patient', patientId: p.id, updatedAt: new Date() },
+      create: { email, passwordHash: await bcrypt.hash('senha123', 10), role: 'patient', patientId: p.id },
+    });
+  }
+
+  // Create appointments for these patients spread across units and statuses
+  const statuses = ['aguardando', 'confirmado', 'compareceu', 'faltou'];
+  for (let i = 0; i < extraPatients.length; i++) {
+    const pat = extraPatients[i];
+    const doctorAssigned = i % 2 === 0 ? doctor : doctor2;
+    const scheduled = withTime(addDays(today, (i % 7) - 3), 8 + (i % 8), i % 2 ? 30 : 0);
+    const status = statuses[i % statuses.length];
+
+    await prisma.appointment.upsert({
+      where: { id: `appt-extra-${i + 1}` },
+      update: {
+        patientId: pat.id,
+        doctorId: doctorAssigned.id,
+        specialty: doctorAssigned.specialty || 'Clínica Geral',
+        scheduledAt: scheduled,
+        unit: pat.nearestUnit || 'UBS Centro',
+        status,
+        priority: i % 5 === 0 ? 'alta' : 'normal',
+        type: i % 4 === 0 ? 'online' : 'presencial',
+      },
+      create: {
+        id: `appt-extra-${i + 1}`,
+        patientId: pat.id,
+        doctorId: doctorAssigned.id,
+        specialty: doctorAssigned.specialty || 'Clínica Geral',
+        scheduledAt: scheduled,
+        unit: pat.nearestUnit || 'UBS Centro',
+        status,
+        priority: i % 5 === 0 ? 'alta' : 'normal',
+        type: i % 4 === 0 ? 'online' : 'presencial',
+      },
+    });
+
+    // increment missedCount for 'falta' patients
+    if (status === 'falta') {
+      await prisma.patient.update({ where: { id: pat.id }, data: { missedCount: { increment: 1 } } }).catch(() => {});
+    }
+  }
+
+  // Create more prescriptions / medications for dashboard medication pipeline
+  for (let i = 0; i < extraPatients.length; i++) {
+    const pat = extraPatients[i];
+    const medName = i % 3 === 0 ? 'Losartana' : i % 3 === 1 ? 'Metformina' : 'Omeprazol';
+    const prescId = `presc-extra-${i + 1}`;
+    const presc = await prisma.prescription.upsert({
+      where: { id: prescId },
+      update: {
+        patientId: pat.id,
+        doctorId: doctor.id,
+        doctorName: doctor.name,
+        medication: medName,
+        activeSubstance: medName,
+        dosage: medName === 'Metformina' ? '500mg' : '50mg',
+        frequency: medName === 'Metformina' ? '2x ao dia' : '1x ao dia',
+        schedule: JSON.stringify(["08:00"]),
+        durationDays: 30,
+        validationCode: `VAL-${i + 1000}`,
+        updatedAt: new Date(),
+      },
+      create: {
+        id: prescId,
+        patientId: pat.id,
+        doctorId: doctor.id,
+        doctorName: doctor.name,
+        medication: medName,
+        activeSubstance: medName,
+        dosage: medName === 'Metformina' ? '500mg' : '50mg',
+        frequency: medName === 'Metformina' ? '2x ao dia' : '1x ao dia',
+        schedule: JSON.stringify(["08:00"]),
+        durationDays: 30,
+        validationCode: `VAL-${i + 1000}`,
+        active: true,
+      },
+    });
+
+    await prisma.medication.upsert({
+      where: { id: `med-extra-${i + 1}` },
+      update: {
+        patientId: pat.id,
+        prescriptionId: presc.id,
+        name: medName,
+        dosage: presc.dosage,
+        frequency: presc.frequency,
+        startDate: today,
+        endDate: addDays(today, 30),
+        initialQuantity: 30,
+        remainingQuantity: 25 - (i % 5),
+        updatedAt: new Date(),
+      },
+      create: {
+        id: `med-extra-${i + 1}`,
+        patientId: pat.id,
+        prescriptionId: presc.id,
+        name: medName,
+        dosage: presc.dosage,
+        frequency: presc.frequency,
+        startDate: today,
+        endDate: addDays(today, 30),
+        initialQuantity: 30,
+        remainingQuantity: 25 - (i % 5),
+      },
+    });
+  }
+
+  // Add some adherence alerts and medication logs for analytics
+  for (let i = 0; i < Math.min(8, extraPatients.length); i++) {
+    const pat = extraPatients[i];
+    await prisma.adherenceAlert.upsert({
+      where: { id: `adherence-${i + 1}` },
+      update: {
+        patientId: pat.id,
+        prescriptionId: null,
+        pattern: i % 2 === 0 ? 'missed_doses' : 'late_doses',
+        createdAt: new Date(),
+      },
+      create: {
+        id: `adherence-${i + 1}`,
+        patientId: pat.id,
+        prescriptionId: null,
+        pattern: i % 2 === 0 ? 'missed_doses' : 'late_doses',
+      },
+    });
+
+    await prisma.medicationLog.upsert({
+      where: { id: `medlog-extra-${i + 1}` },
+      update: {
+        patientId: pat.id,
+        medicationId: `med-extra-${i + 1}`,
+        confirmedAt: addDays(today, -(i % 4)),
+        source: i % 2 === 0 ? 'user_mobile' : 'attendant_kiosk',
+      },
+      create: {
+        id: `medlog-extra-${i + 1}`,
+        patientId: pat.id,
+        medicationId: `med-extra-${i + 1}`,
+        confirmedAt: addDays(today, -(i % 4)),
+        source: i % 2 === 0 ? 'user_mobile' : 'attendant_kiosk',
+      },
+    });
+  }
+
+  // Create a few audit logs to show recent activity on dashboard
+  const actions = ['create_appointment', 'cancel_appointment', 'confirm_medication', 'stock_adjustment'];
+  for (let i = 0; i < 12; i++) {
+    await prisma.auditLog.upsert({
+      where: { id: `audit-${i + 1}` },
+      update: {
+        userId: i % 3 === 0 ? admin.id : attendant.id,
+        userName: i % 3 === 0 ? admin.name : attendant.name,
+        userRole: i % 3 === 0 ? admin.role : attendant.role,
+        action: actions[i % actions.length],
+        target: `target-${i + 1}`,
+        details: JSON.stringify({ note: 'Ação de demonstração para dashboard' }),
+        timestamp: addDays(today, -i),
+      },
+      create: {
+        id: `audit-${i + 1}`,
+        userId: i % 3 === 0 ? admin.id : attendant.id,
+        userName: i % 3 === 0 ? admin.name : attendant.name,
+        userRole: i % 3 === 0 ? admin.role : attendant.role,
+        action: actions[i % actions.length],
+        target: `target-${i + 1}`,
+        details: JSON.stringify({ note: 'Ação de demonstração para dashboard' }),
+        timestamp: addDays(today, -i),
+      },
+    });
+  }
+
+  // --- Generate historical data for last 30 days to feed dashboard ---
+  const startDate = addDays(today, -30);
+  const specialties = ['Clínica Geral', 'Cardiologia', 'Ginecologia', 'Pediatria', 'Psiquiatria'];
+  const unitsNames = units.map((u) => u.name);
+
+  // Create additional patients and appointments across the last 30 days
+  for (let dayOffset = 0; dayOffset <= 30; dayOffset++) {
+    const date = withTime(addDays(startDate, dayOffset), 8, 0);
+    // create between 5 and 12 appointments per day
+    const apptsCount = 5 + Math.floor(Math.random() * 8);
+    for (let j = 0; j < apptsCount; j++) {
+      const patient = extraPatients[(dayOffset + j) % extraPatients.length];
+      const doc = (j % 2 === 0) ? doctor : doctor2;
+      const specialty = specialties[(dayOffset + j) % specialties.length];
+      const scheduled = withTime(addDays(startDate, dayOffset), 8 + (j % 9), (j % 2) ? 30 : 0);
+      const statusRoll = Math.random();
+      const status = statusRoll < 0.75 ? 'compareceu' : statusRoll < 0.9 ? 'confirmado' : 'faltou';
+
+      await prisma.appointment.create({
+        data: {
+          id: `hist-appt-${dayOffset}-${j}`,
+          patientId: patient.id,
+          doctorId: doc.id,
+          specialty,
+          scheduledAt: scheduled,
+          unit: unitsNames[(dayOffset + j) % unitsNames.length],
+          status,
+          priority: Math.random() < 0.1 ? 'alta' : 'normal',
+          type: Math.random() < 0.2 ? 'online' : 'presencial',
+        },
+      }).catch(() => {});
+
+      if (status === 'faltou') {
+        await prisma.patient.update({ where: { id: patient.id }, data: { missedCount: { increment: 1 } } }).catch(() => {});
+      }
+    }
+  }
+
+  // Create some historical prescriptions and exams
+  for (let i = 0; i < extraPatients.length; i++) {
+    const pat = extraPatients[i];
+    for (let k = 0; k < 3; k++) {
+      const createdAt = addDays(startDate, Math.floor(Math.random() * 30));
+      const med = ['Losartana', 'Metformina', 'Omeprazol'][k % 3];
+      const prescId = `hist-presc-${i}-${k}`;
+      await prisma.prescription.upsert({
+        where: { id: prescId },
+        update: {
+          patientId: pat.id,
+          doctorId: doctor.id,
+          doctorName: doctor.name,
+          medication: med,
+          activeSubstance: med,
+          dosage: med === 'Metformina' ? '500mg' : '50mg',
+          frequency: med === 'Metformina' ? '2x ao dia' : '1x ao dia',
+          schedule: JSON.stringify(['08:00']),
+          durationDays: 30,
+          validationCode: `HVAL-${i}-${k}`,
+          updatedAt: new Date(),
+        },
+        create: {
+          id: prescId,
+          patientId: pat.id,
+          doctorId: doctor.id,
+          doctorName: doctor.name,
+          medication: med,
+          activeSubstance: med,
+          dosage: med === 'Metformina' ? '500mg' : '50mg',
+          frequency: med === 'Metformina' ? '2x ao dia' : '1x ao dia',
+          schedule: JSON.stringify(['08:00']),
+          durationDays: 30,
+          validationCode: `HVAL-${i}-${k}`,
+          active: Math.random() < 0.6,
+          createdAt,
+        },
+      });
+    }
+
+    // random exams
+    for (let e = 0; e < 2; e++) {
+      const exId = `hist-exam-${i}-${e}`;
+      const createdAt = addDays(startDate, Math.floor(Math.random() * 30));
+      await prisma.exam.upsert({
+        where: { id: exId },
+        update: {
+          patientId: pat.id,
+          exam: e % 2 === 0 ? 'Hemograma' : 'Raio-X de Tórax',
+          status: Math.random() < 0.6 ? 'pendente' : 'laudo_pronto',
+          requestedById: doctor.id,
+          updatedAt: new Date(),
+        },
+        create: {
+          id: exId,
+          patientId: pat.id,
+          exam: e % 2 === 0 ? 'Hemograma' : 'Raio-X de Tórax',
+          status: Math.random() < 0.6 ? 'pendente' : 'laudo_pronto',
+          requestedById: doctor.id,
+          createdAt,
+        },
+      });
+    }
+  }
+
+  // Add historical stock exits/entries to show movement trends
+  for (let d = 0; d < 30; d++) {
+    const day = addDays(startDate, d);
+    const entries = 1 + Math.floor(Math.random() * 3);
+    for (let en = 0; en < entries; en++) {
+      const unit = units[(d + en) % units.length];
+      const med = medicines[(d + en) % medicines.length];
+      await prisma.stockTransaction.create({
+        data: {
+          id: `hist-stx-${d}-${en}`,
+          healthUnitId: unit.id,
+          medicineId: med.id,
+          medicineName: med.name,
+          medicineDetails: JSON.stringify({ note: 'Histórico entry', source: 'seed' }),
+          userId: attendant.id,
+          type: 'ENTRY',
+          quantity: 20 + Math.floor(Math.random() * 40),
+          createdAt: withTime(day, 9 + en, 0),
+        },
+      }).catch(() => {});
+    }
+    const exits = Math.floor(Math.random() * 4);
+    for (let ex = 0; ex < exits; ex++) {
+      const unit = units[(d + ex) % units.length];
+      const med = medicines[(d + ex) % medicines.length];
+      await prisma.stockTransaction.create({
+        data: {
+          id: `hist-stx-ex-${d}-${ex}`,
+          healthUnitId: unit.id,
+          medicineId: med.id,
+          medicineName: med.name,
+          medicineDetails: JSON.stringify({ note: 'Histórico exit', source: 'seed' }),
+          userId: attendant.id,
+          type: 'EXIT',
+          quantity: 5 + Math.floor(Math.random() * 15),
+          createdAt: withTime(day, 12 + ex, 0),
+        },
+      }).catch(() => {});
+    }
+  }
+
   console.log("Database seed applied successfully.");
 }
 

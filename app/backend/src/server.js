@@ -559,25 +559,90 @@ api.post("/patients", requireAuth, requireRoles("atendente", "admin"), async (re
   }
 });
 
+api.put("/patients/:id", requireAuth, requireRoles("atendente", "medico", "admin"), async (req, res) => {
+  const patientId = req.params.id;
+  const existingPatient = await prisma.patient.findUnique({
+    where: { id: patientId },
+    include: { userAuth: true },
+  });
+  if (!existingPatient) return res.status(404).json({ detail: "Paciente não encontrado" });
+
+  const email = req.body.email === undefined ? undefined : String(req.body.email || "").trim().toLowerCase();
+  const updateData = {
+    name: req.body.name === undefined ? undefined : req.body.name?.trim(),
+    email,
+    birthDate: req.body.birth_date === undefined ? undefined : req.body.birth_date ? new Date(req.body.birth_date) : null,
+    phone: req.body.phone,
+    address: req.body.address,
+    sex: req.body.sex,
+    motherName: req.body.mother_name,
+    fatherName: req.body.father_name,
+    susCard: req.body.sus_card,
+    cep: req.body.cep,
+    cityState: req.body.city_state,
+    nearestUnit: req.body.nearest_unit,
+    emergencyContactName: req.body.emergency_contact_name,
+    emergencyContactPhone: req.body.emergency_contact_phone,
+    substanceUse: req.body.substance_use,
+    allergies: req.body.allergies,
+    chronicConditions: req.body.chronic_conditions,
+    lgpdAccepted: req.body.lgpd_accepted === undefined ? undefined : !!req.body.lgpd_accepted,
+  };
+
+  const filteredUpdate = {};
+  Object.entries(updateData).forEach(([key, value]) => {
+    if (value !== undefined) filteredUpdate[key] = value;
+  });
+
+  try {
+    const updatedPatient = await prisma.$transaction(async (tx) => {
+      if (email && existingPatient.userAuth) {
+        await tx.userAuth.update({
+          where: { patientId: patientId },
+          data: { email },
+        });
+      }
+      return tx.patient.update({
+        where: { id: patientId },
+        data: filteredUpdate,
+      });
+    });
+    await audit(req.user, "patient.update", patientId, { updatedFields: Object.keys(filteredUpdate) });
+    res.json(toPatient(updatedPatient));
+  } catch (error) {
+    if (error?.code === "P2002") return res.status(409).json({ detail: "CPF ou e-mail já cadastrado." });
+    throw error;
+  }
+});
+
 api.get("/appointments", requireAuth, async (req, res) => {
   const where = {};
   if (req.query.date) {
-    const d = new Date(req.query.date + "T00:00:00");
-    const end = new Date(d);
-    end.setDate(end.getDate() + 1);
-    where.scheduledAt = { gte: d, lt: end };
+    const parsedDate = parseLocalDate(String(req.query.date));
+    if (!Number.isNaN(parsedDate.getTime())) {
+      const end = new Date(parsedDate);
+      end.setDate(end.getDate() + 1);
+      where.scheduledAt = { gte: parsedDate, lt: end };
+    }
   }
   if (req.query.doctor_id) where.doctorId = req.query.doctor_id;
   else if (req.user.role === "medico") where.doctorId = req.user.id;
   // Atendente só pode ver a agenda da própria unidade — nunca pacientes de
-  // outro hospital/postinho.
-  if (req.user.role === "atendente" && req.user.unit) where.unit = req.user.unit;
+  // outro hospital/postinho. Alguns agendamentos móveis podem usar um unit
+  // diferente do médico, mas se o médico pertence à unidade do atendente,
+  // ele ainda deve ver a consulta.
+  if (req.user.role === "atendente" && req.user.unit) {
+    where.OR = [
+      { unit: req.user.unit },
+      { doctor: { unit: req.user.unit } },
+    ];
+  }
   const appts = await prisma.appointment.findMany({
     where: {
       ...where,
       status: { notIn: cancelledStatuses },
     },
-    include: { patient: true },
+    include: { patient: true, doctor: true },
     orderBy: { scheduledAt: "asc" },
   });
   res.json(appts.map(toAppt));
