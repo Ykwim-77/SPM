@@ -30,8 +30,16 @@ export default function Profile() {
           api.responsavelPatients(),
         ]);
         if (!cancelled) {
-          setActivePatientIdState(currentPatientId);
-          setPatients(linkedPatients || []);
+          const patientsList = linkedPatients || [];
+          let activeId = currentPatientId;
+          const currentLink = patientsList.find((item) => item.patient_id === currentPatientId);
+          if (!currentLink || !currentLink.relationship_active) {
+            const firstActive = patientsList.find((item) => item.relationship_active);
+            activeId = firstActive ? firstActive.patient_id : patientsList[0]?.patient_id ?? null;
+            if (activeId) await setActivePatientId(activeId);
+          }
+          setActivePatientIdState(activeId);
+          setPatients(patientsList);
         }
       } catch (error: any) {
         if (!cancelled) setPatientError(String(error?.message || 'Não foi possível carregar os pacientes vinculados.'));
@@ -121,10 +129,11 @@ export default function Profile() {
               patients.map((patient) => (
                 <AccessiblePressable
                   key={patient.patient_id}
-                  style={[styles.patientCard, patient.patient_id === activePatientId ? styles.patientCardActive : null]}
-                  onPress={() => handleSelectPatient(patient.patient_id)}
+                  style={[styles.patientCard, patient.patient_id === activePatientId ? styles.patientCardActive : null, !patient.relationship_active ? styles.patientCardInactive : null]}
+                  onPress={patient.relationship_active ? () => handleSelectPatient(patient.patient_id) : undefined}
                   testID={`patient-card-${patient.patient_id}`}
-                  label={`Selecionar paciente ${patient.name}`}
+                  label={patient.relationship_active ? `Selecionar paciente ${patient.name}` : `Paciente ${patient.name} sem autorização`}
+                  disabled={!patient.relationship_active}
                 >
                   <View style={{ flex: 1 }}>
                     <Text style={styles.patientName}>{patient.name}</Text>
@@ -191,6 +200,7 @@ const styles = StyleSheet.create({
   sectionText: { fontSize: font.sm, color: colors.muted, marginBottom: spacing.sm },
   patientCard: { flexDirection: 'row', alignItems: 'center', padding: spacing.md, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.border, backgroundColor: '#fafafa', marginBottom: spacing.sm },
   patientCardActive: { borderColor: colors.brandPrimary, backgroundColor: colors.brandPrimary + '10' },
+  patientCardInactive: { opacity: 0.6, backgroundColor: colors.surfaceSecondary },
   patientName: { fontSize: font.base, fontWeight: '700', color: colors.onSurface },
   patientHint: { fontSize: font.sm, color: colors.muted, marginTop: 2 },
   patientActiveLabel: { color: colors.brandPrimary, fontWeight: '700' },

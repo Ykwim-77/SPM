@@ -65,13 +65,15 @@ async function authMiddleware(req, res, next) {
     let patientId = auth.patientId;
     if (auth.role === 'responsavel') {
       const requestedPatientId = String(req.get('x-patient-id') || '');
-      const link = await prisma.patientResponsavel.findFirst({
-        where: {
-          responsavelId: auth.responsavelId || undefined,
-          ...(requestedPatientId ? { patientId: requestedPatientId } : {}),
-        },
-        orderBy: { createdAt: 'asc' },
-      });
+      const baseWhere = { responsavelId: auth.responsavelId || undefined };
+      const link = requestedPatientId
+        ? await prisma.patientResponsavel.findFirst({
+            where: { ...baseWhere, patientId: requestedPatientId },
+          })
+        : await prisma.patientResponsavel.findFirst({
+            where: { ...baseWhere, consentGranted: true },
+            orderBy: { createdAt: 'asc' },
+          });
       patientId = link?.patientId || null;
       if (!patientId) return res.status(403).json({ detail: 'Responsável sem paciente vinculado' });
       const consent = await prisma.consentRecord.findUnique({
@@ -503,10 +505,12 @@ app.post('/api/auth/login', async (req, res) => {
 
   let patientId = auth.patientId;
   if (auth.role === 'responsavel') {
-    patientId = (await prisma.patientResponsavel.findFirst({
-      where: { responsavelId: auth.responsavelId || undefined },
+    const link = await prisma.patientResponsavel.findFirst({
+      where: { responsavelId: auth.responsavelId || undefined, consentGranted: true },
       orderBy: { createdAt: 'asc' },
-    }))?.patientId || null;
+    });
+    if (!link) return res.status(403).json({ detail: 'Nenhum paciente autorizado para este responsável.' });
+    patientId = link.patientId;
   }
   if (!patientId) return res.status(401).json({ detail: 'Paciente não encontrado' });
   const patient = await prisma.patient.findUnique({ where: { id: patientId } });
@@ -518,6 +522,10 @@ app.post('/api/auth/login', async (req, res) => {
     token_type: 'bearer',
     user: serializeUser({ ...patient, email: auth.email, __authRole: auth.role }),
   });
+});
+
+app.post('/api/auth/logout', (_req, res) => {
+  res.json({ ok: true });
 });
 
 app.post('/api/auth/change-password', async (req, res) => {
@@ -551,6 +559,7 @@ app.get('/api/responsavel/patients', authMiddleware, async (req, res) => {
   const links = await prisma.patientResponsavel.findMany({
     where: { responsavelId: req.auth.responsavelId || undefined },
     include: { patient: true },
+    orderBy: [{ consentGranted: 'desc' }, { createdAt: 'asc' }],
   });
 
   res.json(

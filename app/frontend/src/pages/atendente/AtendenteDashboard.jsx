@@ -117,9 +117,6 @@ export default function AtendenteDashboard() {
     has_responsavel: false,
     responsavel_patient_id: "",
     responsavel_name: "",
-    responsavel_email: "",
-    responsavel_temporary_password: "",
-    responsavel_phone: "",
   });
 
   const updateNp = (field, value) =>
@@ -129,10 +126,8 @@ export default function AtendenteDashboard() {
         setResponsavelSuggestions([]);
         return {
           ...next,
+          responsavel_patient_id: "",
           responsavel_name: "",
-          responsavel_email: "",
-          responsavel_phone: "",
-          responsavel_temporary_password: "",
         };
       }
       return next;
@@ -323,9 +318,6 @@ export default function AtendenteDashboard() {
         has_responsavel: false,
         responsavel_patient_id: "",
         responsavel_name: "",
-        responsavel_email: "",
-        responsavel_temporary_password: "",
-        responsavel_phone: "",
       });
     } catch (e) {
       const detail = e?.response?.data?.error?.message || e?.response?.data?.detail || "Erro ao cadastrar";
@@ -340,6 +332,7 @@ export default function AtendenteDashboard() {
         setResponsavelSuggestions([]);
         return {
           ...next,
+          responsavel_patient_id: "",
           responsavel_name: "",
           responsavel_email: "",
           responsavel_phone: "",
@@ -374,10 +367,8 @@ export default function AtendenteDashboard() {
       chronic_conditions: patient.chronic_conditions || "",
       lgpd_accepted: !!patient.lgpd_accepted,
       has_responsavel: hasResponsavel,
+      responsavel_patient_id: currentResponsavel.id || "",
       responsavel_name: currentResponsavel.name || "",
-      responsavel_email: currentResponsavel.email || "",
-      responsavel_temporary_password: "",
-      responsavel_phone: currentResponsavel.phone || "",
     });
     setShowEditPatientForm(true);
   };
@@ -1324,7 +1315,7 @@ export default function AtendenteDashboard() {
             )}
             <div className="col-span-2">
               <div className="text-sm text-slate-500">
-                Preencha os dados do responsável somente se o paciente tiver vínculo com um responsável.
+                Selecione um paciente cadastrado como responsável.
               </div>
             </div>
             <Field label="Cartão Nacional de Saúde (SUS)">
