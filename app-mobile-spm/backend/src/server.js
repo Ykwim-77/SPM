@@ -104,6 +104,7 @@ function serializeUser(user) {
     id: user.id,
     email: user.email || null,
     name: user.name,
+    role: user.__authRole || 'patient',
     cpf: user.cpf || null,
     photo_base64: user.photoBase64 || null,
     blood_type: user.bloodType || null,
@@ -512,7 +513,11 @@ app.post('/api/auth/login', async (req, res) => {
   if (!patient) return res.status(401).json({ detail: 'Paciente não encontrado' });
 
   const token = signToken(auth);
-  res.json({ access_token: token, token_type: 'bearer', user: serializeUser({ ...patient, email: auth.email }) });
+  res.json({
+    access_token: token,
+    token_type: 'bearer',
+    user: serializeUser({ ...patient, email: auth.email, __authRole: auth.role }),
+  });
 });
 
 app.post('/api/auth/change-password', async (req, res) => {
@@ -534,8 +539,28 @@ app.get('/api/auth/me', authMiddleware, async (req, res) => {
   const patient = await prisma.patient.findUnique({ where: { id: req.userId } });
   if (!patient) return res.status(401).json({ detail: 'Usuário não encontrado' });
 
-  const auth = await prisma.userAuth.findUnique({ where: { patientId: patient.id } });
-  res.json(serializeUser({ ...patient, email: auth?.email || patient.email }));
+  const auth = await prisma.userAuth.findUnique({ where: { id: req.auth.id } });
+  res.json(serializeUser({ ...patient, email: auth?.email || patient.email, __authRole: auth?.role }));
+});
+
+app.get('/api/responsavel/patients', authMiddleware, async (req, res) => {
+  if (req.auth.role !== 'responsavel') {
+    return res.status(403).json({ detail: 'Acesso negado' });
+  }
+
+  const links = await prisma.patientResponsavel.findMany({
+    where: { responsavelId: req.auth.responsavelId || undefined },
+    include: { patient: true },
+  });
+
+  res.json(
+    links.map((link) => ({
+      patient_id: link.patient.id,
+      name: link.patient.name,
+      birthdate: link.patient.birthDate ? link.patient.birthDate.toISOString().slice(0, 10) : null,
+      relationship_active: link.consentGranted,
+    })),
+  );
 });
 
 app.put('/api/auth/me', authMiddleware, async (req, res) => {

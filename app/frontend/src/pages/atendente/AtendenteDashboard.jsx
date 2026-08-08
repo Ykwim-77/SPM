@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import {
   Calendar,
@@ -9,6 +9,8 @@ import {
   Lock,
   LockOpen,
   AlertTriangle,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
@@ -72,6 +74,12 @@ export default function AtendenteDashboard() {
     allergies: "",
     chronic_conditions: "",
     lgpd_accepted: true,
+    has_responsavel: false,
+    responsavel_patient_id: "",
+    responsavel_name: "",
+    responsavel_email: "",
+    responsavel_temporary_password: "",
+    responsavel_phone: "",
   });
   const [showLockModal, setShowLockModal] = useState(false);
   const [selectedDoctorForLock, setSelectedDoctorForLock] = useState(null);
@@ -106,15 +114,40 @@ export default function AtendenteDashboard() {
     allergies: "",
     chronic_conditions: "",
     lgpd_accepted: true,
+    has_responsavel: false,
+    responsavel_patient_id: "",
+    responsavel_name: "",
+    responsavel_email: "",
+    responsavel_temporary_password: "",
+    responsavel_phone: "",
   });
 
   const updateNp = (field, value) =>
-    setNp((prev) => ({ ...prev, [field]: value }));
+    setNp((prev) => {
+      const next = { ...prev, [field]: value };
+      if (field === "has_responsavel" && !value) {
+        setResponsavelSuggestions([]);
+        return {
+          ...next,
+          responsavel_name: "",
+          responsavel_email: "",
+          responsavel_phone: "",
+          responsavel_temporary_password: "",
+        };
+      }
+      return next;
+    });
 
   const [filterName, setFilterName] = useState("");
   const [filterStartTime, setFilterStartTime] = useState("");
   const [filterEndTime, setFilterEndTime] = useState("");
-  const [filterUnit, setFilterUnit] = useState("");
+  const [responsavelSuggestions, setResponsavelSuggestions] = useState([]);
+  const [responsavelSearchLoading, setResponsavelSearchLoading] = useState(false);
+  const [responsavelSearchError, setResponsavelSearchError] = useState(null);
+  const [responsavelDropdownOpen, setResponsavelDropdownOpen] = useState(false);
+  const [showPatientPassword, setShowPatientPassword] = useState(false);
+  const responsavelSearchTimeout = useRef(null);
+  const responsavelSearchRequestId = useRef(0);
   const load = async () => {
     const p = await api.get(`/patients?q=${encodeURIComponent(q)}`);
     setPatients(Array.isArray(p.data) ? p.data : []);
@@ -195,12 +228,74 @@ export default function AtendenteDashboard() {
       toast.error(e?.response?.data?.detail || "Erro ao agendar");
     }
   };
-  const createPatient = async () => {
+  const getResponsavelPayload = (values) => {
+    if (!values.has_responsavel) return undefined;
+    if (!values.responsavel_patient_id) return undefined;
+    return { patient_id: values.responsavel_patient_id };
+  };
+
+  const doSearchResponsavel = async (query) => {
+    const requestId = ++responsavelSearchRequestId.current;
+    setResponsavelSearchLoading(true);
+    setResponsavelSearchError(null);
     try {
-      await api.post("/patients", {
+      const response = await api.get(`/patients?q=${encodeURIComponent(query.trim())}`);
+      if (requestId !== responsavelSearchRequestId.current) return;
+      const results = response?.data ?? [];
+      const items = Array.isArray(results) ? results : [];
+      setResponsavelSuggestions(items);
+      setResponsavelDropdownOpen(true);
+    } catch (error) {
+      if (requestId !== responsavelSearchRequestId.current) return;
+      setResponsavelSearchError(error?.response?.data?.detail || error?.message || "Erro ao buscar responsáveis");
+      setResponsavelSuggestions([]);
+    } finally {
+      if (requestId !== responsavelSearchRequestId.current) return;
+      setResponsavelSearchLoading(false);
+    }
+  };
+
+  const searchResponsavel = (query) => {
+    if (!query || query.trim().length < 3) {
+      if (responsavelSearchTimeout.current) {
+        clearTimeout(responsavelSearchTimeout.current);
+      }
+      setResponsavelSuggestions([]);
+      setResponsavelSearchError(null);
+      setResponsavelSearchLoading(false);
+      setResponsavelDropdownOpen(false);
+      return;
+    }
+
+    if (responsavelSearchTimeout.current) {
+      clearTimeout(responsavelSearchTimeout.current);
+    }
+    responsavelSearchTimeout.current = setTimeout(() => {
+      doSearchResponsavel(query);
+    }, 250);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (responsavelSearchTimeout.current) {
+        clearTimeout(responsavelSearchTimeout.current);
+      }
+    };
+  }, []);
+
+  const createPatient = async () => {
+    if (np.has_responsavel && !np.responsavel_patient_id) {
+      toast.error("Selecione um paciente cadastrado para ser responsável.");
+      return;
+    }
+    try {
+      const payload = {
         ...np,
         temporary_password: np.temporary_password.trim(),
-      });
+      };
+      const responsavel = getResponsavelPayload(np);
+      if (responsavel) payload.responsavel = responsavel;
+      await api.post("/patients", payload);
       toast.success("Paciente cadastrado");
       setShowPatientForm(false);
       load();
@@ -225,6 +320,12 @@ export default function AtendenteDashboard() {
         allergies: "",
         chronic_conditions: "",
         lgpd_accepted: true,
+        has_responsavel: false,
+        responsavel_patient_id: "",
+        responsavel_name: "",
+        responsavel_email: "",
+        responsavel_temporary_password: "",
+        responsavel_phone: "",
       });
     } catch (e) {
       const detail = e?.response?.data?.error?.message || e?.response?.data?.detail || "Erro ao cadastrar";
@@ -233,9 +334,24 @@ export default function AtendenteDashboard() {
   };
 
   const updateEditPatient = (field, value) =>
-    setEditPatientValues((prev) => ({ ...prev, [field]: value }));
+    setEditPatientValues((prev) => {
+      const next = { ...prev, [field]: value };
+      if (field === "has_responsavel" && !value) {
+        setResponsavelSuggestions([]);
+        return {
+          ...next,
+          responsavel_name: "",
+          responsavel_email: "",
+          responsavel_phone: "",
+          responsavel_temporary_password: "",
+        };
+      }
+      return next;
+    });
 
   const openEditPatientForm = (patient) => {
+    const hasResponsavel = Array.isArray(patient.responsaveis) && patient.responsaveis.length > 0;
+    const currentResponsavel = hasResponsavel ? patient.responsaveis[0] : {};
     setEditingPatient(patient);
     setEditPatientValues({
       name: patient.name || "",
@@ -257,6 +373,11 @@ export default function AtendenteDashboard() {
       allergies: patient.allergies || "",
       chronic_conditions: patient.chronic_conditions || "",
       lgpd_accepted: !!patient.lgpd_accepted,
+      has_responsavel: hasResponsavel,
+      responsavel_name: currentResponsavel.name || "",
+      responsavel_email: currentResponsavel.email || "",
+      responsavel_temporary_password: "",
+      responsavel_phone: currentResponsavel.phone || "",
     });
     setShowEditPatientForm(true);
   };
@@ -268,8 +389,15 @@ export default function AtendenteDashboard() {
 
   const updatePatient = async () => {
     if (!editingPatient) return;
+    if (editPatientValues.has_responsavel && !editPatientValues.responsavel_patient_id) {
+      toast.error("Selecione um paciente cadastrado para ser responsável.");
+      return;
+    }
     try {
-      await api.put(`/patients/${editingPatient.id}`, editPatientValues);
+      const payload = { ...editPatientValues };
+      const responsavel = getResponsavelPayload(editPatientValues);
+      if (responsavel) payload.responsavel = responsavel;
+      await api.put(`/patients/${editingPatient.id}`, payload);
       toast.success("Dados do paciente atualizados");
       closeEditPatientForm();
       load();
@@ -838,13 +966,23 @@ export default function AtendenteDashboard() {
               />
             </Field>
             <Field label="Senha temporária">
-              <input
-                type="password"
-                value={np.temporary_password}
-                onChange={(e) => updateNp("temporary_password", e.target.value)}
-                className="inp"
-                placeholder="Mínimo 8 caracteres"
-              />
+              <div className="relative">
+                <input
+                  type={showPatientPassword ? "text" : "password"}
+                  value={np.temporary_password}
+                  onChange={(e) => updateNp("temporary_password", e.target.value)}
+                  className="inp pr-10"
+                  placeholder="Mínimo 8 caracteres"
+                />
+                <button
+                  type="button"
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-500"
+                  onClick={() => setShowPatientPassword((current) => !current)}
+                  aria-label={showPatientPassword ? "Ocultar senha" : "Mostrar senha"}
+                >
+                  {showPatientPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
+              </div>
             </Field>
             <div className="col-span-2 flex flex-wrap gap-2">
               <button
@@ -874,6 +1012,87 @@ export default function AtendenteDashboard() {
                 className="inp"
               />
             </Field>
+            <div className="col-span-2 flex items-center gap-3">
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={np.has_responsavel}
+                  onChange={(e) => updateNp("has_responsavel", e.target.checked)}
+                />
+                Paciente tem responsável
+              </label>
+            </div>
+            {np.has_responsavel && (
+              <>
+                <Field label="Buscar paciente responsável">
+                  <input
+                    value={np.responsavel_name}
+                    onChange={(e) => {
+                      updateNp("responsavel_patient_id", "");
+                      updateNp("responsavel_name", e.target.value);
+                      searchResponsavel(e.target.value);
+                    }}
+                    onFocus={() => {
+                      if (np.responsavel_name?.trim().length >= 3 && responsavelSuggestions.length > 0) {
+                        setResponsavelDropdownOpen(true);
+                      }
+                    }}
+                    className="inp"
+                    placeholder="Digite nome do paciente responsável"
+                  />
+                  {responsavelSearchLoading && (
+                    <div className="text-xs text-slate-500 mt-1">Buscando pacientes...</div>
+                  )}
+                  {responsavelSearchError && (
+                    <div className="text-xs text-red-600 mt-1">{responsavelSearchError}</div>
+                  )}
+                  {responsavelDropdownOpen && (
+                    <div className="mt-2 rounded border border-slate-200 bg-white shadow-sm z-10">
+                      {responsavelSearchLoading ? (
+                        <div className="px-3 py-2 text-xs text-slate-500">Buscando pacientes...</div>
+                      ) : responsavelSuggestions.length > 0 ? (
+                        responsavelSuggestions.map((suggestion) => (
+                          <button
+                            key={suggestion.id}
+                            type="button"
+                            className="w-full text-left px-3 py-2 hover:bg-slate-100"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => {
+                              updateNp("responsavel_patient_id", suggestion.id || "");
+                              updateNp("responsavel_name", suggestion.name || "");
+                              setResponsavelSuggestions([]);
+                              setResponsavelDropdownOpen(false);
+                            }}
+                          >
+                            <div className="font-medium">{suggestion.name}</div>
+                            <div className="text-xs text-slate-500">{suggestion.email || suggestion.phone}</div>
+                          </button>
+                        ))
+                      ) : (
+                        <div className="px-3 py-2 text-xs text-slate-500">Nenhum paciente encontrado.</div>
+                      )}
+                    </div>
+                  )}
+                </Field>
+              </>
+            )}
+            <div className="col-span-2 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => updateNp("temporary_password", generateTemporaryPassword(12))}
+                className="px-4 py-2 border border-slate-200 rounded-md text-sm"
+              >
+                Gerar senha temporária
+              </button>
+              <div className="text-[11px] text-slate-500 self-center">
+                Essa senha será usada para o login do app mobile.
+              </div>
+            </div>
+            <div className="col-span-2">
+              <div className="text-sm text-slate-500">
+                Selecione um paciente já cadastrado como responsável.
+              </div>
+            </div>
             <Field label="Telefone/Celular">
               <input
                 value={np.phone}
@@ -1045,15 +1264,70 @@ export default function AtendenteDashboard() {
                 placeholder="paciente@exemplo.com"
               />
             </Field>
+            <div className="col-span-2 flex items-center gap-3">
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={editPatientValues.has_responsavel}
+                  onChange={(e) => updateEditPatient("has_responsavel", e.target.checked)}
+                />
+                Paciente tem responsável
+              </label>
+            </div>
+            {editPatientValues.has_responsavel && (
+              <>
+                <Field label="Nome do responsável">
+                  <input
+                    value={editPatientValues.responsavel_name}
+                    onChange={(e) => {
+                      updateEditPatient("responsavel_name", e.target.value);
+                      searchResponsavel(e.target.value);
+                    }}
+                    onFocus={() => {
+                      if (editPatientValues.responsavel_name?.trim().length >= 3 && responsavelSuggestions.length > 0) {
+                        setResponsavelDropdownOpen(true);
+                      }
+                    }}
+                    className="inp"
+                    placeholder="Nome completo do responsável"
+                  />
+                  {responsavelSearchLoading && (
+                    <div className="text-xs text-slate-500 mt-1">Buscando responsáveis...</div>
+                  )}
+                  {responsavelSearchError && (
+                    <div className="text-xs text-red-600 mt-1">{responsavelSearchError}</div>
+                  )}
+                  {responsavelDropdownOpen && responsavelSuggestions.length > 0 && (
+                    <div className="mt-2 rounded border border-slate-200 bg-white shadow-sm">
+                      {responsavelSuggestions.map((suggestion) => (
+                        <button
+                          key={suggestion.id}
+                          type="button"
+                          className="w-full text-left px-3 py-2 hover:bg-slate-100"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            updateEditPatient("responsavel_name", suggestion.name || "");
+                            updateEditPatient("responsavel_email", suggestion.email || "");
+                            updateEditPatient("responsavel_phone", suggestion.phone || "");
+                            setResponsavelSuggestions([]);
+                            setResponsavelDropdownOpen(false);
+                          }}
+                        >
+                          <div className="font-medium">{suggestion.name}</div>
+                          <div className="text-xs text-slate-500">{suggestion.email || suggestion.phone}</div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </Field>
+              </>
+            )}
+            <div className="col-span-2">
+              <div className="text-sm text-slate-500">
+                Preencha os dados do responsável somente se o paciente tiver vínculo com um responsável.
+              </div>
+            </div>
             <Field label="Cartão Nacional de Saúde (SUS)">
-              <input
-                value={editPatientValues.sus_card}
-                onChange={(e) => updateEditPatient("sus_card", e.target.value)}
-                className="inp"
-                placeholder="Somente números (ex. 123456789012345)"
-              />
-            </Field>
-            <Field label="Nascimento">
               <input
                 type="date"
                 value={editPatientValues.birth_date}

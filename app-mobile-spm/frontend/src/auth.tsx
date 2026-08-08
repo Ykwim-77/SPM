@@ -1,10 +1,11 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
-import { api, setToken, getToken } from './api';
+import { api, setToken, getToken, setActivePatientId } from './api';
 import { useRouter } from 'expo-router';
 import { registerForPushNotificationsAsync, scheduleMedicationReminders, scheduleAppointmentReminders } from './notifications';
 
 export type User = {
   id: string;
+  role?: 'patient' | 'responsavel' | string;
   email: string;
   name: string;
   cpf?: string;
@@ -59,9 +60,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!tok) { setUser(null); return; }
       const me = await api.me();
       setUser(me);
+      if (me.role !== 'responsavel') {
+        await setActivePatientId(null);
+      }
     } catch {
       setUser(null);
       await setToken(null);
+      await setActivePatientId(null);
     }
   }, []);
 
@@ -89,6 +94,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const r = await api.login({ email, password });
       await setToken(r.access_token);
       setUser(r.user);
+      if (r.user?.role !== 'responsavel') {
+        await setActivePatientId(null);
+      }
       try { await registerForPushNotificationsAsync(); } catch {}
     } catch (e: any) {
       if (e?.code === 'MUST_CHANGE_PASSWORD' || (e?.status === 403 && String(e?.message).includes('Troque a senha temporária'))) {
@@ -111,6 +119,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       // Clear local auth state
       await setToken(null);
+      await setActivePatientId(null);
       setUser(null);
       settled.current = true;
       setLoading(false);

@@ -178,6 +178,24 @@ export async function getToken(): Promise<string | null> {
   }
 }
 
+const ACTIVE_PATIENT_ID_KEY = 'active_patient_id';
+
+export async function getActivePatientId(): Promise<string | null> {
+  try {
+    const value = await storage.getItem<string | null>(ACTIVE_PATIENT_ID_KEY, null);
+    return value as string | null;
+  } catch {
+    return null;
+  }
+}
+
+export async function setActivePatientId(id: string | null) {
+  try {
+    if (id) await storage.setItem(ACTIVE_PATIENT_ID_KEY, id);
+    else await storage.removeItem(ACTIVE_PATIENT_ID_KEY);
+  } catch {}
+}
+
 export async function setToken(t: string | null) {
   try {
     if (t) await storage.setItem(TOKEN_KEY, t);
@@ -206,11 +224,13 @@ function unpackApiResponse<T>(payload: any, status: number): T {
 async function request<T = any>(path: string, opts: RequestInit = {}, timeoutMs = DEFAULT_TIMEOUT): Promise<T> {
   let baseUrl = await resolveBaseUrl();
   const token = await getToken();
+  const patientId = await getActivePatientId();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...((opts.headers as any) || {}),
   };
   if (token) headers.Authorization = `Bearer ${token}`;
+  if (patientId) headers['x-patient-id'] = patientId;
 
   let timer: NodeJS.Timeout | undefined;
 
@@ -324,5 +344,6 @@ export const api = {
 
   notifications: () => request('/notifications'),
   setPushToken: (token: string) => request('/push-token', { method: 'POST', body: JSON.stringify({ token }) }),
+  responsavelPatients: () => request('/responsavel/patients'),
   faq: () => request('/help/faq'),
 };

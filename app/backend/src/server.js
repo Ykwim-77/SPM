@@ -104,6 +104,8 @@ const SPECIALTIES = [
 const cancelledStatuses = ["cancelado", "cancelled", "bloqueio_medico"];
 const api = express.Router();
 
+const normalizeEmail = (value) => String(value || "").trim().toLowerCase();
+
 const toPatient = (p) => ({
   id: p.id,
   name: p.name,
@@ -127,6 +129,16 @@ const toPatient = (p) => ({
   lgpd_accepted: p.lgpdAccepted,
   missed_count: p.missedCount,
   blocked_online: p.blockedOnline,
+  responsaveis: Array.isArray(p.patientResponsaveis)
+    ? p.patientResponsaveis.map((rel) => ({
+        id: rel.responsavel.id,
+        patient_responsavel_id: rel.id,
+        name: rel.responsavel.name,
+        email: rel.responsavel.email,
+        phone: rel.responsavel.phone,
+        consent_granted: rel.consentGranted,
+      }))
+    : [],
 });
 
 const hasCorruptedProfileText = (p) => {
@@ -351,15 +363,154 @@ api.post("/users", requireAuth, requireRoles("admin"), async (req, res) => {
   res.json(safe);
 });
 
+const linkResponsavelToPatient = async (tx, patientId, responsavelData) => {
+  const tempPassword = String(responsavelData.temporary_password || responsavelData.temporaryPassword || "");
+  let name = responsavelData.name?.trim();
+  let email = responsavelData.email ? normalizeEmail(responsavelData.email) : undefined;
+  let phone = responsavelData.phone;
+  const linkingPatient = Boolean(responsavelData.patient_id);
+
+  if (responsavelData.patient_id) {
+    const patient = await tx.patient.findUnique({ where: { id: responsavelData.patient_id } });
+    if (!patient) {
+      const err = new Error("RESPONSAVEL_PATIENT_NOT_FOUND");
+      err.code = "NOT_FOUND";
+      throw err;
+    }
+    if (patient.id === patientId) {
+      const err = new Error("RESPONSAVEL_CANNOT_BE_SELF");
+      err.code = "VALIDATION_ERROR";
+      throw err;
+    }
+    name = name || patient.name;
+    email = email || (patient.email ? normalizeEmail(patient.email) : undefined);
+    phone = phone || patient.phone;
+  }
+
+  if (!linkingPatient && (!name || !email)) {
+    throw new Error("RESPONSAVEL_MISSING_FIELDS");
+  }
+  const existingAuth = email ? await tx.userAuth.findUnique({ where: { email } }) : null;
+  if (!linkingPatient && !existingAuth && !tempPassword) {
+    throw new Error("RESPONSAVEL_PASSWORD_REQUIRED");
+  }
+  if (!linkingPatient && tempPassword && tempPassword.length < 8) {
+    const err = new Error("RESPONSAVEL_PASSWORD_TOO_SHORT");
+    err.code = "PASSWORD_SHORT";
+    throw err;
+  }
+
+  let responsavel = email ? await tx.responsavel.findUnique({ where: { email } }) : null;
+  if (!responsavel) {
+    responsavel = await tx.responsavel.create({
+      data: {
+        name,
+        email,
+        phone,
+      },
+    });
+  }
+
+  if (existingAuth) {
+    if (linkingPatient) {
+      if (existingAuth.role === "responsavel" && existingAuth.responsavelId !== responsavel.id) {
+        const err = new Error("RESPONSAVEL_EMAIL_CONFLICT");
+        err.code = "P2002";
+        throw err;
+      }
+    } else if (existingAuth.role !== "responsavel" || existingAuth.responsavelId !== responsavel.id) {
+      const err = new Error("RESPONSAVEL_EMAIL_CONFLICT");
+      err.code = "P2002";
+      throw err;
+    }
+  }
+
+  if (!existingAuth && tempPassword && email && !linkingPatient) {
+    await tx.userAuth.create({
+      data: {
+        role: "responsavel",
+        email,
+        passwordHash: await bcrypt.hash(tempPassword, 12),
+        mustChangePassword: true,
+        responsavelId: responsavel.id,
+      },
+    });
+  }
+
+  const existingLink = await tx.patientResponsavel.findUnique({
+    where: { patientId_responsavelId: { patientId, responsavelId: responsavel.id } },
+  });
+  if (!existingLink) {
+    await tx.patientResponsavel.create({
+      data: {
+        patientId,
+        responsavelId: responsavel.id,
+        consentGranted: true,
+      },
+    });
+  }
+
+  await tx.consentRecord.upsert({
+    where: {
+      patientId_purpose: { patientId, purpose: "share_with_responsavel" },
+    },
+    update: { granted: true },
+    create: {
+      patientId,
+      purpose: "share_with_responsavel",
+      granted: true,
+    },
+  });
+
+  return responsavel;
+};
+
+api.get("/responsavels", requireAuth, requireRoles("atendente", "admin"), async (req, res) => {
+  const q = String(req.query.q || "").trim();
+  if (!q) return res.json([]);
+
+  const responsavels = await prisma.responsavel.findMany({
+    where: {
+      OR: [
+        { name: { contains: q } },
+        { email: { contains: q } },
+      ],
+    },
+    take: 10,
+    include: { patientResponsaveis: { include: { patient: true } } },
+  });
+
+  res.json(
+    responsavels.map((r) => ({
+      id: r.id,
+      name: r.name,
+      email: r.email,
+      phone: r.phone,
+      patients: r.patientResponsaveis.map((rel) => ({
+        id: rel.patient.id,
+        name: rel.patient.name,
+        cpf: rel.patient.cpf,
+        birth_date: rel.patient.birthDate,
+      })),
+    }))
+  );
+});
 api.get("/patients", requireAuth, async (req, res) => {
   const q = req.query.q;
   const where = q
     ? { OR: [{ name: { contains: q } }, { cpf: { contains: q } }] }
     : {};
-  res.json((await prisma.patient.findMany({ where })).map(toPatient));
+  res.json(
+    (
+      await prisma.patient.findMany({ where, include: { patientResponsaveis: { include: { responsavel: true } } } })
+    ).map(toPatient),
+  );
 });
 api.get("/patients/:id", requireAuth, async (req, res) => {
-  let p = await prisma.patient.findUnique({ where: { id: req.params.id } });
+  let p = await prisma.patient.findUnique({
+    where: { id: req.params.id },
+    include: { patientResponsaveis: { include: { responsavel: true } } },
+  });
   if (!p) return res.status(404).json({ detail: "Paciente não encontrado" });
 
   const demoDefaultProfile = {
@@ -504,6 +655,10 @@ api.post("/patients", requireAuth, requireRoles("atendente", "admin"), async (re
     return res.status(409).json({ detail: "CPF ou e-mail já cadastrado." });
   }
 
+  if (req.body.responsavel && !req.body.responsavel.patient_id) {
+    return res.status(422).json({ detail: "Selecione um paciente cadastrado como responsável." });
+  }
+
   try {
     const p = await prisma.$transaction(async (tx) => {
       const patient = await tx.patient.create({
@@ -549,25 +704,35 @@ api.post("/patients", requireAuth, requireRoles("atendente", "admin"), async (re
           granted: !!req.body.lgpd_accepted,
         },
       });
+
+      if (req.body.responsavel) {
+        const responsavel = await linkResponsavelToPatient(tx, patient.id, req.body.responsavel);
+        await audit(req.user, "patient.link_responsavel", responsavel.id, { patientId: patient.id });
+      }
       return patient;
     });
     await audit(req.user, "patient.create", p.id, { hasMobileAccount: true });
     return res.status(201).json(toPatient(p));
   } catch (error) {
     if (error?.code === "P2002") return res.status(409).json({ detail: "CPF ou e-mail já cadastrado." });
+    if (error?.message === "RESPONSAVEL_MISSING_FIELDS") return res.status(422).json({ detail: "Nome, e-mail e senha temporária do responsável são obrigatórios." });
+    if (error?.code === "PASSWORD_SHORT") return res.status(422).json({ detail: "A senha temporária do responsável deve ter ao menos 8 caracteres." });
     throw error;
   }
 });
 
-api.put("/patients/:id", requireAuth, requireRoles("atendente", "medico", "admin"), async (req, res) => {
+api.put("/patients/:id", requireAuth, requireRoles("atendente", "admin"), async (req, res) => {
   const patientId = req.params.id;
-  const existingPatient = await prisma.patient.findUnique({
-    where: { id: patientId },
-    include: { userAuth: true },
-  });
+  const existingPatient = await prisma.patient.findUnique({ where: { id: patientId }, include: { userAuth: true } });
   if (!existingPatient) return res.status(404).json({ detail: "Paciente não encontrado" });
 
-  const email = req.body.email === undefined ? undefined : String(req.body.email || "").trim().toLowerCase();
+  const email = req.body.email === undefined ? undefined : normalizeEmail(req.body.email);
+  if (req.body.responsavel) {
+    if (!req.body.responsavel.patient_id) {
+      return res.status(422).json({ detail: "Selecione um paciente cadastrado como responsável." });
+    }
+  }
+
   const updateData = {
     name: req.body.name === undefined ? undefined : req.body.name?.trim(),
     email,
@@ -602,15 +767,45 @@ api.put("/patients/:id", requireAuth, requireRoles("atendente", "medico", "admin
           data: { email },
         });
       }
+      if (req.body.remove_responsavel_id) {
+        await tx.patientResponsavel.deleteMany({
+          where: {
+            patientId,
+            responsavelId: req.body.remove_responsavel_id,
+          },
+        });
+        const remainingLinks = await tx.patientResponsavel.count({ where: { patientId } });
+        if (remainingLinks === 0) {
+          await tx.consentRecord.upsert({
+            where: { patientId_purpose: { patientId, purpose: "share_with_responsavel" } },
+            update: { granted: false },
+            create: {
+              patientId,
+              purpose: "share_with_responsavel",
+              granted: false,
+            },
+          });
+        }
+      }
+      if (req.body.responsavel) {
+        const responsavel = await linkResponsavelToPatient(tx, patientId, req.body.responsavel);
+        await audit(req.user, "patient.link_responsavel", responsavel.id, { patientId });
+      }
       return tx.patient.update({
         where: { id: patientId },
         data: filteredUpdate,
       });
     });
-    await audit(req.user, "patient.update", patientId, { updatedFields: Object.keys(filteredUpdate) });
+    await audit(req.user, "patient.update", patientId, {
+      updatedFields: Object.keys(filteredUpdate),
+      remove_responsavel_id: req.body.remove_responsavel_id,
+      hasResponsavelPayload: Boolean(req.body.responsavel),
+    });
     res.json(toPatient(updatedPatient));
   } catch (error) {
     if (error?.code === "P2002") return res.status(409).json({ detail: "CPF ou e-mail já cadastrado." });
+    if (error?.message === "RESPONSAVEL_MISSING_FIELDS") return res.status(422).json({ detail: "Nome, e-mail e senha temporária do responsável são obrigatórios." });
+    if (error?.code === "PASSWORD_SHORT") return res.status(422).json({ detail: "A senha temporária do responsável deve ter ao menos 8 caracteres." });
     throw error;
   }
 });

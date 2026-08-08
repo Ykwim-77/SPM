@@ -1,16 +1,57 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Image, Alert } from 'react-native';
 import AccessiblePressable from '@/src/components/AccessiblePressable';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, radius, font } from '@/src/theme';
+import { api, getActivePatientId, setActivePatientId } from '@/src/api';
 import { useAuth } from '@/src/auth';
 
 export default function Profile() {
-  const { user, signOut, loggingOut } = useAuth();
+  const { user, signOut, loggingOut, refresh } = useAuth();
   const router = useRouter();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [patients, setPatients] = useState<Array<{ patient_id: string; name: string; birthdate: string | null; relationship_active: boolean }>>([]);
+  const [activePatientId, setActivePatientIdState] = useState<string | null>(null);
+  const [loadingPatients, setLoadingPatients] = useState(false);
+  const [patientError, setPatientError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (user?.role !== 'responsavel') return;
+    let cancelled = false;
+    setLoadingPatients(true);
+    setPatientError(null);
+
+    (async () => {
+      try {
+        const [currentPatientId, linkedPatients] = await Promise.all([
+          getActivePatientId(),
+          api.responsavelPatients(),
+        ]);
+        if (!cancelled) {
+          setActivePatientIdState(currentPatientId);
+          setPatients(linkedPatients || []);
+        }
+      } catch (error: any) {
+        if (!cancelled) setPatientError(String(error?.message || 'Não foi possível carregar os pacientes vinculados.'));
+      } finally {
+        if (!cancelled) setLoadingPatients(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [user]);
+
+  const handleSelectPatient = async (patientId: string) => {
+    try {
+      await setActivePatientId(patientId);
+      setActivePatientIdState(patientId);
+      await refresh();
+    } catch (error) {
+      Alert.alert('Erro', 'Não foi possível alternar o paciente ativo.');
+    }
+  };
 
   const handleLogout = () => {
     Alert.alert(
@@ -69,6 +110,37 @@ export default function Profile() {
         <Row icon="help-circle" color={colors.muted} label="Ajuda" testID="row-help"
           onPress={() => router.push('/help')} />
 
+        {user?.role === 'responsavel' && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Pacientes vinculados</Text>
+            {loadingPatients ? (
+              <Text style={styles.sectionText}>Carregando pacientes...</Text>
+            ) : patientError ? (
+              <Text style={[styles.sectionText, { color: colors.error }]}>{patientError}</Text>
+            ) : (
+              patients.map((patient) => (
+                <AccessiblePressable
+                  key={patient.patient_id}
+                  style={[styles.patientCard, patient.patient_id === activePatientId ? styles.patientCardActive : null]}
+                  onPress={() => handleSelectPatient(patient.patient_id)}
+                  testID={`patient-card-${patient.patient_id}`}
+                  label={`Selecionar paciente ${patient.name}`}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.patientName}>{patient.name}</Text>
+                    <Text style={styles.patientHint}>{patient.birthdate || 'Data de nascimento desconhecida'}</Text>
+                  </View>
+                  {patient.patient_id === activePatientId ? (
+                    <Text style={styles.patientActiveLabel}>Ativo</Text>
+                  ) : (
+                    <Text style={styles.patientSelectLabel}>Trocar</Text>
+                  )}
+                </AccessiblePressable>
+              ))
+            )}
+          </View>
+        )}
+
         <AccessiblePressable 
           style={[styles.logoutBtn, (isLoggingOut || loggingOut) && styles.logoutBtnDisabled]} 
           onPress={handleLogout} 
@@ -114,6 +186,15 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: '#fff', padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, marginBottom: spacing.sm, minHeight: 56 },
   rowIcon: { width: 36, height: 36, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center' },
   rowLabel: { flex: 1, fontSize: font.base, color: colors.onSurface, fontWeight: '600' },
+  section: { marginTop: spacing.lg, padding: spacing.md, backgroundColor: '#fff', borderRadius: radius.md, borderWidth: 1, borderColor: colors.border },
+  sectionTitle: { fontSize: font.lg, fontWeight: '700', color: colors.onSurface, marginBottom: spacing.sm },
+  sectionText: { fontSize: font.sm, color: colors.muted, marginBottom: spacing.sm },
+  patientCard: { flexDirection: 'row', alignItems: 'center', padding: spacing.md, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.border, backgroundColor: '#fafafa', marginBottom: spacing.sm },
+  patientCardActive: { borderColor: colors.brandPrimary, backgroundColor: colors.brandPrimary + '10' },
+  patientName: { fontSize: font.base, fontWeight: '700', color: colors.onSurface },
+  patientHint: { fontSize: font.sm, color: colors.muted, marginTop: 2 },
+  patientActiveLabel: { color: colors.brandPrimary, fontWeight: '700' },
+  patientSelectLabel: { color: colors.brandSecondary, fontWeight: '700' },
   logoutBtn: { 
     flexDirection: 'row', 
     alignItems: 'center', 
